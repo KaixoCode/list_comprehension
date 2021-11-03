@@ -1012,7 +1012,7 @@ namespace kaixo {
 
     /**
      * Expression wrapper is used to simplify templated functions by generalizing how
-     * to get the value, for an expression that requires the operator().
+     * to get the value, for an expression that requires run_expression().
      */
     template<class Type>
     struct expr_wrapper;
