@@ -195,9 +195,8 @@ void some_examples() {
 
 int main() {
 	std::incrementable_traits<range<int>::iterator>::difference_type;
-
-
-	var<int> a, b;
+	var<int> a, b, c;
+	auto r1 = lc[(a, b, c) | c <- range(1, 11), b <- range(1, c), a <- range(1, b), a*a + b*b == c*c];
 
 	lifetime();
 	constructibility();

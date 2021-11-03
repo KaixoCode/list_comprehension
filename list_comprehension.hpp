@@ -375,8 +375,8 @@ namespace kaixo {
                     if (n && result.size() == n)
                         break;
                 }
-
-                increment(its, index, sequence); // Increment the iterator
+                if (!check_end(its, index, sequence))
+                    increment(its, index, sequence); // Increment the iterator
                 while (check_end(its, index, sequence)) { // And check if it's now at the end.
                     set_begin(its, index, sequence); // Reset the iterator
                     index--;                         // And go to the next index to increment that one.
@@ -692,7 +692,7 @@ namespace kaixo {
         const_iterator end() const { return { b.run_expression() }; }
         const_iterator cbegin() const { return begin(); }
         const_iterator cend() const { return end(); }
-        size_t size() const { return b.run_expression() - a.run_expression(); }
+        size_type size() const { auto res = b.run_expression() - a.run_expression(); return res < 0 ? 0 : res; }
         bool empty() const { return b.run_expression() == a.run_expression(); }
 
         bool operator==(const range& o) const { return o.a == a && o.b == b; }
@@ -701,7 +701,7 @@ namespace kaixo {
         expr<Type> a, b;
 
         void init(expr<Type>& a, infinity& t) { a = expr{ [&]() { return (Type)t; } }; }
-        void init(expr<Type>& a, var<Type> t) { a = t; }
+        void init(expr<Type>& a, var<Type> t) { a = expr{ [t]() { return t.run_expression(); } }; }
         void init(expr<Type>& a, expr<Type> t) { a = t; }
         void init(expr<Type>& a, Type&& t) { a = expr{ [t = std::move(t)] () { return t; } }; }
         void init(expr<Type>& a, const Type& t) { a = [t = t]() { return t; }; }
@@ -967,7 +967,7 @@ namespace kaixo {
         template<std::convertible_to<bool> Type, class ContainerSyntax, class ...LinkedContainers>
         list_comprehension<ContainerSyntax, LinkedContainers...>
             operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<Type> c) {
-            v.constraints.push_back({ [c = std::move(c)] () { return static_cast<bool>(c()); } });
+            v.constraints.push_back({ [c = std::move(c)] () { return static_cast<bool>(c.run_expression()); } });
             return v;
         }
 
