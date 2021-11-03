@@ -1,5 +1,5 @@
 # list comprehension
- List comprehension in C++! 
+ Single header list comprehension in C++! 
 ```cpp
 var<int> a, b;
 auto res = lc[(a, b) | a <- range(0, 4), b <- range(0, 4), a > b];
