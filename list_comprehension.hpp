@@ -14,6 +14,8 @@
 #include <tuple>
 #include <map>
 #include <optional>
+#include <bitset>
+#include <any>
 
 namespace kaixo {
 
@@ -28,6 +30,8 @@ namespace kaixo {
     concept has_begin_end = requires(Type a) { a.begin(), a.end(), a.size(); };
     template<class> struct return_type;
     template<class R, class...T> struct return_type<R(T...)> { using type = R; };
+    template<class> struct to_refs;
+    template<class ...Args> struct to_refs<std::tuple<Args...>> { using type = std::tuple<Args&...>; };
 
     /*
      * Expression storage, basically type erased lambda storage 
@@ -39,26 +43,52 @@ namespace kaixo {
         virtual Ty get() = 0;
     };
 
-    template<class R, std::invocable<> Ty>
+    template<class R, std::invocable<> Ty> requires std::same_as<R, std::invoke_result_t<Ty>>
     struct lambda_expr_storage : expr_storage_base<R> {
         Ty lambda;
-        lambda_expr_storage(Ty t) : lambda(t) {}
-        R get() { 
-            return lambda();
-        }
+
+        lambda_expr_storage(Ty t) 
+            : lambda(t) {}
+
+        R get() { return lambda(); }
     };
 
     template<class Ty>
     struct expr_storage {
-        template<std::invocable<> T>
-        expr_storage(T t) : storage(new lambda_expr_storage<Ty, decltype(t)>{ t }) {}
+        using value_type = std::decay_t<Ty>;
+        
         expr_storage() : storage(nullptr) {}
         expr_storage(expr_storage&& other) : storage(other.storage) { other.storage = nullptr; }
         expr_storage(const expr_storage& other) : storage(other.storage) { storage->refs++; }
         ~expr_storage() { clean(); }
-        template<std::invocable<> T>
-        void operator=(T t) { clean(); storage = new lambda_expr_storage<Ty, decltype(t)>{ t }; }
-        void clean() { if (storage && --storage->refs == 0) delete storage; }
+
+        template<std::invocable<> T> requires std::same_as<Ty, std::invoke_result_t<T>>
+        expr_storage(T t) : storage(new lambda_expr_storage<Ty, decltype(t)>{ t }) {}
+
+        expr_storage& operator=(expr_storage&& other) {
+            storage = other.storage;
+            other.storage = nullptr;
+            return *this;
+        }
+
+        expr_storage& operator=(const expr_storage& other) {
+            storage = other.storage;
+            storage->refs++;
+            return *this;
+        }
+
+        template<std::invocable<> T> requires std::same_as<Ty, std::invoke_result_t<T>>
+        auto operator=(T t) { 
+            clean(); 
+            storage = new lambda_expr_storage<Ty, decltype(t)>{ t }; 
+            return *this; 
+        }
+
+        inline void clean() { 
+            if (storage && --storage->refs == 0) 
+                delete storage; 
+        }
+
         expr_storage_base<Ty>* storage;
     };
 
@@ -72,8 +102,8 @@ namespace kaixo {
         enum _state { n, v, r } state = n;
         
         var_storage_base() : ref(nullptr), state(n) {}
-        var_storage_base(Ty&& val) : value(std::move(val)), state(v) {}
         var_storage_base(Ty& val) : ref(&val), state(r) {}
+        var_storage_base(Ty&& val) : value(std::move(val)), state(v) {}
         var_storage_base(const Ty& val) : value(val), state(v) {}
         ~var_storage_base() { clean(); }
 
@@ -84,19 +114,11 @@ namespace kaixo {
             state = r; 
         }
 
-        template<class T> requires (!std::is_reference_v<T>)
+        template<class T>
         inline void operator=(T&& val) { 
             if constexpr (!std::is_trivially_destructible_v<Ty>)
                 clean();
-            new (&value) Ty{ std::move(val) };
-            state = v; 
-        }
-
-        template<class T> requires (!std::is_reference_v<T>)
-        inline void operator=(const T& val) { 
-            if constexpr (!std::is_trivially_destructible_v<Ty>)
-                clean();
-            new (&value) Ty{ val };
+            new (&value) Ty{ std::forward<T>(val) };
             state = v; 
         }
 
@@ -106,6 +128,7 @@ namespace kaixo {
             if constexpr (std::is_default_constructible_v<Ty>)
                 if (state == n)
                     new (&value) Ty, state = v;
+            
             return state == v ? value : *ref; 
         };
 
@@ -123,56 +146,67 @@ namespace kaixo {
     template<class Ty>
     struct var_storage {
         using value_type = std::decay_t<Ty>;
+
         var_storage() : storage(new var_storage_base<Ty>{ }) {}
-        var_storage(value_type&& t) : storage(new var_storage_base<Ty>{ std::move(t) }) {}
-        var_storage(value_type& t) : storage(new var_storage_base<Ty>{ t }) {}
-        var_storage(const value_type& t) : storage(new var_storage_base<Ty>{ t }) {}
         var_storage(var_storage&& other) : storage(other.storage) { other.storage = nullptr; }
         var_storage(const var_storage& other) : storage(other.storage) { storage->refs++; }
         ~var_storage() { clean(); }
 
+        var_storage(value_type&& t) : storage(new var_storage_base<Ty>{ std::move(t) }) {}
+        var_storage(const value_type& t) : storage(new var_storage_base<Ty>{ t }) {}       
+
+        var_storage& operator=(var_storage&& other) { storage = other.storage, other.storage = nullptr; return *this; }
+        var_storage& operator=(const var_storage& other) { storage = other.storage, storage->refs++; return *this; }
+
         template<class Arg>
         inline var_storage& operator=(Arg&& arg) { *storage = std::forward<Arg>(arg); return *this; };
 
-        inline void clean() { if (storage && --storage->refs == 0) delete storage; }
+        inline void clean() { 
+            if (storage && --storage->refs == 0)
+                delete storage; 
+        }
 
         var_storage_base<Ty>* storage;
     };
-
-    template<class Ty, class Storage = expr_storage<Ty>>
-    struct expr;
 
     /**
      * Basis for an expr and var, has certain storage that will generate
      * the result, either variable or from expression stored in a lambda.
      */
-    template<class Ty>
-    struct var;
     struct is_an_expr {};
+    template<class Ty, class Storage = expr_storage<Ty>>
+    struct expr;
+    template<class Ty> requires (!std::is_reference_v<Ty>)
+    struct var;
     template<class Ty, class Storage = expr_storage<Ty>>
     struct expr_base : is_an_expr {
         using type = Ty;
 
         expr_base() = default;
         expr_base(expr_base&&) = default;
-        expr_base(expr_base&) = default;
         expr_base(const expr_base&) = default;
 
-        expr_base(expr<Ty, Storage>& other) : storage(other.storage) {}
-        expr_base(expr<Ty, Storage>&& other) : storage(std::move(other.storage)) {}
-        expr_base(const expr<Ty, Storage>& other) : storage(other.storage) {}
+        // When a var is converted to an expression, it will become a lambda
+        // that captures by value, and returns the result of the invocation of run_expression
+        template<class Type> requires std::same_as<Storage, expr_storage<Ty>>
+        expr_base(const var<Type>& v) : storage([v]() -> Ty { return v.run_expression(); }) {}
 
-        template<class ...Args> 
-        expr_base(Args&&...args)
-            : storage(std::forward<Args>(args)...) {}
+        template<class ...Args> requires std::constructible_from<Storage, Args...>
+        expr_base(Args&&...args) : storage(std::forward<Args>(args)...) {}
 
-        inline Ty operator()() const { return storage.storage->get(); }
+        expr_base& operator=(expr_base&&) = default;
+        expr_base& operator=(const expr_base&) = default;
 
-        template<class T>
-        inline expr_base& operator=(T&& t) { storage.operator=(std::forward<T>(t)); return *this; }
+        template<class Args> requires std::assignable_from<Storage, Args>
+        expr_base& operator=(Args&& args) {
+            storage = std::forward<Args>(args);
+            return *this;
+        }
+
+        inline Ty run_expression() const { return storage.storage->get(); }
 
         template<class Ty> inline expr<Ty> to() {
-            return expr{ [e = expr<type>{ *this }] () { return static_cast<Ty>(e()); } };
+            return expr<Ty>{ [e = *this] () -> Ty { return static_cast<Ty>(e.run_expression()); } };
         }
 
         Storage storage;
@@ -181,39 +215,809 @@ namespace kaixo {
     template<class Ty, class Storage>
     struct expr : expr_base<Ty, Storage> {
         using type = Ty;
-        using value_type = Ty;
+        using value_type = std::decay_t<Ty>;
         using expr_base<Ty, Storage>::expr_base;
         using expr_base<Ty, Storage>::operator=;
     };
 
-    template<class Ty>
+    template<class Ty> requires (!std::is_reference_v<Ty>)
     struct var : expr<Ty&, var_storage<Ty>> {
         using type = Ty&;
         using value_type = Ty;
         using expr<Ty&, var_storage<Ty>>::expr;
-        using expr<Ty&, var_storage<Ty>>::operator=;
 
-        var(var& other) : expr<Ty&, var_storage<Ty>>(other.storage) {}
-        var(var&& other) : expr<Ty&, var_storage<Ty>>(std::move(other.storage)) {}
-        var(const var& other) : expr<Ty&, var_storage<Ty>>(other.storage) {}
+        var(var&& other) { this->storage = std::move(other.storage); }
+        var(const var& other) { this->storage = other.storage; }
 
-        template<class T>
-        inline var& operator=(T&& t) { this->storage.storage->operator=(std::forward<T>(t)); return *this; }
+        var& operator=(var&& other) { this->storage = std::move(other.storage); return *this; }
+        var& operator=(const var& other) { this->storage = other.storage; return *this; }
+
+        template<class Args>
+        var& operator=(Args&& args) {
+            this->storage = std::forward<Args>(args);
+            return *this;
+        }
     };
 
     template<class Type>
-    expr(Type)->expr<decltype(std::declval<Type>()())>;
+    expr(Type)->expr<decltype(std::declval<std::decay_t<Type>>()())>;
+
+    template<class Type>
+    expr(expr<Type>)->expr<Type>;
 
     template<class Type>
     var(Type)->var<Type>;
 
-    // Forward declarations
+    /**
+     * Wrapper for a container, used when creating a cartesian product, works
+     * with any class that defines a begin and end method.
+     */
+    template<class Type, has_begin_end Container>
+    struct container {
+        using type = Type;
+        Container container;
+
+        auto begin() { return container.begin(); }
+        auto end() { return container.end(); }
+        auto size() const { return container.size(); }
+    };
+
+    /**
+     * A struct that links a var to a container, this is stored in the final
+     * link comprehension object.
+     */
+    template<class Type, has_begin_end Container>
+    struct linked_container {
+        using type = typename Type::type;
+        constexpr static bool has_var = false;
+        Type variable;
+        Container container;
+        using iterator = decltype(container.begin());
+
+        iterator begin() { return container.begin(); }
+        iterator end() { return container.end(); }
+        size_t size() const { return container.size(); }
+    };
+
+    /**
+     * Specialization for storing a variable that results in a container.
+     * So we can get the actual result of the variable by calling the operator()
+     */
+    template<class Type, has_begin_end VarType>
+    struct linked_container<Type, container<typename VarType::value_type, var<VarType>>> {
+        using type = typename Type::type;
+        constexpr static bool has_var = true;
+        Type variable;
+        container<typename VarType::value_type, var<VarType>> container;
+        using iterator = decltype(container.begin().run_expression());
+
+        iterator begin() { return container.begin().run_expression(); }
+        iterator end() { return container.end().run_expression(); }
+        size_t size() const { return container.size().run_expression(); }
+    };
+
+    /**
+     * This is the part before the '|', and defines what type of container the
+     * result will be stored in. Also contains a generate method to easily generate an entry
+     * for the resulting container given the values currently in the variables.
+     */
     template<class Container, class ...Types>
-    struct container_syntax;
+    struct container_syntax {
+        using container = Container;
+        std::tuple<expr<Types>...> expressions;
+
+        template<class T>
+        inline void generate(T& container) { return m_Gen(container, std::make_index_sequence<sizeof...(Types)>{}); }
+
+        template<class T, size_t ...Is>
+        inline void m_Gen(T& container, std::index_sequence<Is...>) {
+            if constexpr (std::same_as<std::string, T>)
+                container.push_back(std::get<Is>(expressions).run_expression()...);
+            else if constexpr (has_emplace_back<T, typename expr<Types>::type...>)
+                container.emplace_back(std::get<Is>(expressions).run_expression()...);
+            else if constexpr (has_try_emplace<T, typename expr<Types>::type...>)
+                container.try_emplace(std::get<Is>(expressions).run_expression()...);
+            else
+                container.emplace(std::get<Is>(expressions).run_expression()...);
+        }
+    };
+
+    /**
+     * Everything combined into a single object, contains the container syntax, all
+     * the linked containers, and also some constraints, which are expressions that evaluate to 'bool'
+     */
+    template<class ContainerSyntax, class ...LinkedContainers>
+    struct list_comprehension {
+        using container = typename ContainerSyntax::container;
+        using value_type = container::value_type;
+        using reference = container::reference;
+        using size_type = container::size_type;
+
+        constexpr static auto container_count = sizeof...(LinkedContainers);
+        constexpr static auto sequence = std::make_index_sequence<container_count>{};
+        constexpr static bool has_var_as_container = (LinkedContainers::has_var || ...);
+        
+        ContainerSyntax syntax;
+        std::tuple<LinkedContainers...> containers;
+        std::vector<expr<bool>> constraints;
+
+        container operator*() { return m_Get(0); }
+        container get() { return this->m_Get(0); }
+        container take(std::size_t n) { return this->m_Get(n); }
+
+        expr<container> get_as_expr() { return expr{ [cpy = std::move(*this)] () mutable { return cpy.m_Get(0); } }; }
+
+    private:
+        inline container m_Get(std::size_t n) {
+            container result;
+
+            bool needs_reset[sizeof...(LinkedContainers)];
+            std::fill(std::begin(needs_reset), std::end(needs_reset), false);
+
+            // Check whether container has any content 
+            if (std::get<0>(containers).size() == 0)
+                return result;
+
+            std::tuple<LinkedContainers::iterator...> its;
+            set_begin(its, sequence); // Initialize all iterators to begin
+
+            int index = container_count - 1;
+            bool done = false;
+            while (!done) { // This will loop through all the values in the cartesian product of the linked containers.
+                set_values(its, sequence); // Set all vars to the values that the iterators point to.
+
+                bool _match = true;
+                for (auto& c : constraints) // Check all constraints.
+                    _match &= c.run_expression();
+
+                if (_match) { // If all matched, generate an entry, and add to result.
+                    syntax.generate(result);
+                    if (n && result.size() == n)
+                        break;
+                }
+
+                increment(its, index, sequence); // Increment the iterator
+                while (check_end(its, index, sequence)) { // And check if it's now at the end.
+                    set_begin(its, index, sequence); // Reset the iterator
+                    index--;                         // And go to the next index to increment that one.
+                    if (index == -1) {               // If we're at the end, we're done.
+                        done = true;
+                        break;
+                    }
+
+                    if (!check_end(its, index, sequence)) {
+                        increment(its, index, sequence); // Otherwise increment the iterator and loop to check if also at the end.
+                        
+                        needs_reset[index + 1] = true;
+                    }
+                }
+                if constexpr (has_var_as_container) {
+                    for (int i = 0; i < sizeof...(LinkedContainers); i++) {
+                        if (needs_reset[i]) {
+                            set_values(its, sequence);
+                            set_begin(its, i, sequence);
+                            needs_reset[i] = false;
+                        }
+                    }
+                }
+
+                index = container_count - 1; // Reset index back to 0 for the next iteration.
+            }
+
+            return result;
+        }
+
+        /**
+         * Some helper functions because dealing with tuples
+         * is a living nightmare when also working with changing indices...
+         */
+        template<class T, std::size_t ...Is>
+        inline void set_begin(T& tuple, std::index_sequence<Is...>) {
+            ((void(std::get<Is>(tuple) = std::get<Is>(containers).begin()),
+                has_var_as_container && std::get<Is>(containers).size() ? (std::get<Is>(containers).variable = *std::get<Is>(containers).begin(), true) : true),
+                ...);
+        }
+
+        template<class T, std::size_t ...Is>
+        inline void set_begin(T& tuple, std::size_t i, std::index_sequence<Is...>) {
+            ((Is == i ? (std::get<Is>(tuple) = std::get<Is>(containers).begin(), true) : true), ...);
+        }
+
+        template<class T, std::size_t ...Is>
+        inline bool check_end(T& tuple, size_t i, std::index_sequence<Is...>) {
+            bool is_end = false;
+            ((Is == i ? (is_end = std::get<Is>(tuple) == std::get<Is>(containers).end(), true) : true), ...);
+            return is_end;
+        }
+
+        template<class T, std::size_t ...Is>
+        inline void set_values(T& tuple, std::index_sequence<Is...>) {
+            (void(std::get<Is>(containers).variable = *std::get<Is>(tuple)), ...);
+        }
+
+        template<class T, std::size_t ...Is>
+        inline void increment(T& tuple, std::size_t index, std::index_sequence<Is...>) {
+            ((Is == index ? (++std::get<Is>(tuple), true) : true), ...);
+        }
+
+        template<class T, std::size_t ...Is>
+        inline void set_as_end(T& tuple, std::size_t index, std::index_sequence<Is...>) {
+            ((Is == index ? (std::get<Is>(tuple) = std::get<Is>(containers).end(), true) : true), ...);
+        }
+    };
+
+    /**
+     * Some sugar on top that allows syntax like
+     * 'lc[a | a <- range(0, 10)]' for 'true' list comprehension.
+     * lcv is for generating an expression out of the list comprehension
+     * for use inside other list comprehensions, and lcl is for lazy
+     * evaluation, basically, doesn't evaluate the list comprehension, which
+     * allows a call to list_comprehension::take(size_t), where you can lazily get
+     * the first n results.
+     */
+    struct lce {
+        template<class ContainerSyntax, class ...LinkedContainers>
+        auto operator[](list_comprehension<ContainerSyntax, LinkedContainers...>&& l) { return std::move(l).get(); };
+    } lc;
+
+    struct lcev {
+        template<class ContainerSyntax, class ...LinkedContainers>
+        auto operator[](list_comprehension<ContainerSyntax, LinkedContainers...>&& l) { return std::move(l).get_as_expr(); };
+    } lcv;
+    
+    struct lcel {
+        template<class ContainerSyntax, class ...LinkedContainers>
+        auto operator[](list_comprehension<ContainerSyntax, LinkedContainers...>&& l) { return std::move(l); };
+    } lcl;
+
+    /*
+     * 
+     *  Some handy utilities for more complex list comprehension.
+     * 
+     */
+
+    /**
+     * Simple tuple of vars, with operator overloads to be compatible.
+     * with the list comprehension object.
+     */
+    template<class ...Args>
+    struct tuple_of_vars {
+        using type = std::tuple<Args...>;
+        std::tuple<var<Args>...> vars;
+
+        void operator=(type&& a) { vars = a; }
+        void operator=(const type& a) { vars = a; }
+    };
+
+    /**
+     * Basically a wrapper around a string_view to be compatible
+     * with the list comprehension.
+     */
+    struct literalview {
+        using value_type = char;
+        using reference = char&;
+        using const_reference = const char&;
+        using iterator = char*;
+        using const_iterator = const char*;
+        using difference_type = std::ptrdiff_t;
+        using size_type = size_t;
+
+        literalview(const char* d) : data(d) {}
+       
+        iterator begin() { return const_cast<char*>(data.data()); }
+        iterator end() { return const_cast<char*>(data.data() + data.size()); }
+        const_iterator begin() const { return data.data(); }
+        const_iterator end() const { return data.data() + data.size(); }
+        const_iterator cbegin() const { return data.data(); }
+        const_iterator cend() const { return data.data() + data.size(); }
+        size_type size() const { return data.size(); }
+    
+    private: 
+        std::string_view data;
+    };
+
+    /**
+     * Used for parallel iteration of containers. Stores multiple containers (value or reference)
+     * and defines an iterator that returns a tuple of references to the values.
+     */
+    template<has_begin_end... Containers>
+    struct tuple_of_containers {
+        constexpr static auto seq = std::make_index_sequence<sizeof...(Containers)>{};
+
+        // Value type is a tuple of all the results of the iterator, this
+        // ensures that if a container iterator returns a tuple, all of the types are added to this tuple.
+        using value_type = decltype(std::tuple_cat(
+            std::tuple{ *std::declval<typename std::decay_t<Containers>::iterator>() }...));
+
+        // Simple iterator, the '==' operator checks whether 1 of the iterators
+        // is equal, this ensures it will stop iterating once one of the iterators reaches the end.
+        template<bool Const>
+        struct toc_iterator {
+            using iterator_category = std::forward_iterator_tag;
+            using value_type = tuple_of_containers::value_type;
+            using difference_type = std::ptrdiff_t;
+            using pointer = value_type*;
+            using reference = value_type&;
+
+            toc_iterator& operator++() { return increment_r(seq); }
+            toc_iterator operator++(int) { return increment(seq); }
+            value_type operator*() { return get(seq); }
+            bool operator==(const toc_iterator& o) const { return equal(o, seq); }
+            std::tuple<std::conditional_t<Const, typename std::decay_t<Containers>::const_iterator, typename std::decay_t<Containers>::iterator>...> iterators;
+
+        private:
+            template<size_t ...Is>
+            value_type get(std::index_sequence<Is...>) { 
+                return { std::tuple_cat(std::tuple{ *std::get<Is>(iterators) }...) };
+            }
+
+            template<size_t ...Is>
+            toc_iterator& increment_r(std::index_sequence<Is...>) {
+                ((++std::get<Is>(iterators)), ...);
+                return *this;
+            }
+
+            template<size_t ...Is>
+            toc_iterator& increment(std::index_sequence<Is...>) {
+                ((std::get<Is>(iterators)++), ...);
+                return *this;
+            }
+
+            template<size_t ...Is>
+            bool equal(const toc_iterator& other, std::index_sequence<Is...>) const {
+                return ((std::get<Is>(iterators) == std::get<Is>(other.iterators)) || ...);
+            }
+        };
+
+        using iterator = toc_iterator<false>;
+        using const_iterator = toc_iterator<true>;
+        using reference = value_type&;
+        using const_reference = const value_type&;
+        using difference_type = std::iterator_traits<iterator>::difference_type;
+        using size_type = std::size_t;
+
+        std::tuple<Containers...> containers;
+
+        iterator begin() { return seq_begin(seq); };
+        iterator end() { return seq_end(seq); };
+        const_iterator begin() const { return seq_begin(seq); };
+        const_iterator end() const { return seq_end(seq); };
+        const_iterator cbegin() const { return seq_begin(seq); };
+        const_iterator cend() const { return seq_end(seq); };
+        size_type size() const { return seq_size(seq); }
+        size_type max_size() const { return seq_max_size(seq); }
+        bool empty() const { return empty(seq); }
+
+        bool operator==(const tuple_of_containers& o) const { return equal(o, seq); }
+        bool operator!=(const tuple_of_containers& o) const { return !equal(o, seq); }
+        void swap(tuple_of_containers& o) { o.containers.swap(containers); }
+
+    private:
+        template<size_t ...Is>
+        size_type seq_size(std::index_sequence<Is...>) const {
+            size_t _size = std::get<0>(containers).size();
+            ((std::get<Is>(containers).size() < _size ? (_size = std::get<Is>(containers).size(), false) : false), ...);
+            return _size;
+        }
+        template<size_t ...Is>
+        size_type seq_max_size(std::index_sequence<Is...>) const {
+            size_t _size = std::get<0>(containers).max_size();
+            ((std::get<Is>(containers).max_size() < _size ? (_size = std::get<Is>(containers).max_size(), false) : false), ...);
+            return _size;
+        }
+        template<size_t ...Is>
+        iterator seq_begin(std::index_sequence<Is...>) { return { { std::get<Is>(containers).begin()... } }; }
+        template<size_t ...Is>
+        iterator seq_end(std::index_sequence<Is...>) { return { { std::get<Is>(containers).end()... } }; }
+        template<size_t ...Is>
+        const_iterator seq_begin(std::index_sequence<Is...>) const { return { { std::get<Is>(containers).begin()... } }; }
+        template<size_t ...Is>
+        const_iterator seq_end(std::index_sequence<Is...>) const { return { { std::get<Is>(containers).end()... } }; }
+        template<size_t ...Is>
+        bool equal(const tuple_of_containers& other, std::index_sequence<Is...>) const { return ((std::get<Is>(containers) == std::get<Is>(other.containers)) || ...); }
+        template<size_t ...Is>
+        bool empty(std::index_sequence<Is...>) const { return ((std::get<Is>(containers).empty()) || ...); }
+    };
+
+    /**
+     * Infinity value for usage in range.
+     */
+    struct infinity {
+        template<class T> requires (std::floating_point<T> || std::integral<T>)
+            operator T() { return std::numeric_limits<T>::max(); }
+    } inf;
+
+    /**
+     * Simple range class with a start and end, plus an iterator because
+     * list comprehension uses iterators to create the cartesian product of all sets.
+     * requires start <= end
+     */
+    template<class Type>
+    concept can_range = requires(Type t) {
+        { ++t } -> std::convertible_to<Type>;
+        { t + 1 } -> std::convertible_to<Type>;
+    };
+    template<can_range Type>
+    struct range {
+        struct iterator {
+            using iterator_category = std::forward_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using value_type = Type;
+            using reference = Type&;
+            using const_reference = const Type&;
+
+            iterator& operator++() { ++cur; return *this; }
+            iterator operator++(int) { return { cur + 1 }; }
+            Type& operator*() { return cur; }
+            bool operator==(const iterator& o) const { return o.cur == cur; }
+            Type cur;
+        };
+
+        using const_iterator = iterator;
+        using value_type = Type;
+        using reference = Type&;
+        using const_reference = const Type&;
+        using difference_type = std::iterator_traits<iterator>::difference_type;
+        using size_type = std::size_t;
+
+        range(Type&& x, Type&& y) { init(a, std::move(x)); init(b, std::move(y)); }
+        range(Type& x, Type&& y) { init(a, x); init(b, std::move(y)); }
+        range(Type&& x, Type& y) { init(a, std::move(x)); init(b, y); }
+        range(Type& x, Type& y) { init(a, x); init(b, y); }
+        range(Type&& x, expr<Type> y) { init(a, std::move(x)); init(b, y); }
+        range(Type& x, expr<Type> y) { init(a, x); init(b, y); }
+        range(Type&& x, var<Type> y) { init(a, std::move(x)); init(b, y); }
+        range(Type& x, var<Type> y) { init(a, x); init(b, y); }
+        range(var<Type> x, Type&& y) { init(a, x); init(b, std::move(y)); }
+        range(expr<Type> x, Type&& y) { init(a, x); init(b, std::move(y)); }
+        range(var<Type> x, Type& y) { init(a, x); init(b, y); }
+        range(expr<Type> x, Type& y) { init(a, x); init(b, y); }
+        range(var<Type> x, var<Type> y) { init(a, x); init(b, y); }
+        range(expr<Type> x, var<Type> y) { init(a, x); init(b, y); }
+        range(var<Type> x, expr<Type> y) { init(a, x); init(b, y); }
+        range(expr<Type> x, expr<Type> y) { init(a, x); init(b, y); }
+        range(Type&& x, infinity& y) { init(a, std::move(x)); init(b, y); }
+        range(Type& x, infinity& y) { init(a, x); init(b, y); }
+        range(var<Type> x, infinity& y) { init(a, x); init(b, y); }
+        range(expr<Type> x, infinity& y) { init(a, x); init(b, y); }
+        
+        range(const range& o) : a(o.a), b(o.b) {};
+        range(range&& o) : a(o.a), b(o.b) {};
+        range& operator=(const range& o) { a.storage = o.a.storage, b.storage = o.b.storage; return *this; };
+        range& operator=(range&& o) { a.storage = o.a.storage, b.storage = o.b.storage; return *this; };
+
+        iterator begin() { return { a.run_expression() }; }
+        iterator end() { return { b.run_expression() }; }
+        const_iterator begin() const { return { a.run_expression() }; }
+        const_iterator end() const { return { b.run_expression() }; }
+        const_iterator cbegin() const { return begin(); }
+        const_iterator cend() const { return end(); }
+        size_t size() const { return b.run_expression() - a.run_expression(); }
+        bool empty() const { return b.run_expression() == a.run_expression(); }
+
+        bool operator==(const range& o) const { return o.a == a && o.b == b; }
+
+    private:
+        expr<Type> a, b;
+
+        void init(expr<Type>& a, infinity& t) { a = expr{ [&]() { return (Type)t; } }; }
+        void init(expr<Type>& a, var<Type> t) { a = t; }
+        void init(expr<Type>& a, expr<Type> t) { a = t; }
+        void init(expr<Type>& a, Type&& t) { a = expr{ [t = std::move(t)] () { return t; } }; }
+        void init(expr<Type>& a, const Type& t) { a = [t = t]() { return t; }; }
+    };
+
+    template<class Type, std::convertible_to<Type> T2>
+    range(Type, T2)->range<Type>;
+
+    /**
+     * All the operators that make the magic happen.
+     */
+    namespace lc_operators {
+
+        /**
+         * Normal operators between vars, exprs, and type
+         */
+#define var_op(x)\
+    template<class A, class B> auto operator x(var<A> a, var<B> b) { return expr{ [a, b]() mutable { return a.run_expression() x b.run_expression(); } }; } \
+    template<class A, class B> auto operator x(expr<A> a, var<B> b) { return expr{ [a, b]() mutable { return a.run_expression() x b.run_expression(); } }; } \
+    template<class A, class B> auto operator x(var<A> a, expr<B> b) { return expr{ [a, b]() mutable { return a.run_expression() x b.run_expression(); } }; } \
+    template<class A, class B> auto operator x(expr<A> a, expr<B> b) { return expr{ [a, b]() mutable { return a.run_expression() x b.run_expression(); } }; } \
+    template<class A, class B> auto operator x(expr<A> a, const B& b) { return expr{ [a, b]() mutable { return a.run_expression() x b; } }; } \
+    template<class A, class B> auto operator x(var<A> a, const B& b) { return expr{ [a, b]() mutable { return a.run_expression() x b; } }; } \
+    template<class A, class B> auto operator x(const A& a, expr<B> b) { return expr{ [a, b]() mutable { return a x b.run_expression(); } }; } \
+    template<class A, class B> auto operator x(const A& a, var<B> b) { return expr{ [a, b]() mutable { return a x b.run_expression(); } }; }
+
+        var_op(+);
+        var_op(-);
+        var_op(/ );
+        var_op(*);
+        var_op(%);
+        var_op(== );
+        var_op(!= );
+        var_op(<= );
+        var_op(>= );
+        var_op(> );
+        var_op(< );
+        var_op(<=> );
+        var_op(&&);
+        var_op(&);
+        var_op(|| );
+        var_op(| );
+        var_op(<< );
+        var_op(>> );
+
+#define u_var_op(x)\
+    template<class A> auto operator x(var<A> a) { return expr{ [a]() mutable { return x a.run_expression(); } }; } \
+    template<class A> auto operator x(expr<A> a) { return expr{ [a]() mutable { return x a.run_expression(); } }; } \
+
+        u_var_op(-);
+        u_var_op(+);
+        u_var_op(~);
+        u_var_op(!);
+        u_var_op(*);
+        u_var_op(&);
+
+        /**
+         * This user-defined literal is necessary because you cannot overload the unary '-'
+         * operator on a string literal.
+         */
+        literalview operator""_lv(const char* d, size_t) {
+            return literalview{ d };
+        }
+
+        /**
+         * Operators for constructing tuple of vars.
+         */
+        template<class A, class B>
+        tuple_of_vars<A, B> operator,(var<A> a, var<B> b) { return { { a, b } }; }
+
+        template<class A, class ...Args>
+        tuple_of_vars<Args..., A> operator,(tuple_of_vars<Args...> a, var<A> b) { return { std::tuple_cat(a.vars, std::tuple{ b }) }; }
+
+        template<class A, class ...Args>
+        tuple_of_vars<A, Args...> operator,(var<A> b, tuple_of_vars<Args...> a) { return { std::tuple_cat(std::tuple{ b }, a.vars) }; }
+
+        template<class ...As, class ...Args>
+        tuple_of_vars<As..., Args...> operator,(tuple_of_vars<As...> b, tuple_of_vars<Args...> a) { return { std::tuple_cat(b.vars, a.vars) }; }
+
+        /**
+         * the '-' and '<' operators are used to create a '<-' operator, the unary '-'
+         * creates a container from some class that defines a begin() and end(), and the '<'
+         * links that container to a variable.
+         */
+        template<has_begin_end Container>
+        auto operator-(Container& r) -> container<typename Container::value_type, Container&> { return { r }; }
+
+        template<has_begin_end Container>
+        auto operator-(Container&& r) -> container<typename Container::value_type, Container> { return { std::move(r) }; }
+
+        template<has_begin_end Type>
+        auto operator-(var<Type> r) -> container<typename Type::value_type, var<Type>> { return { r }; }
+
+        template<class Type, class CType, class Container>
+        auto operator<(var<Type> v, container<CType, Container>&& r) -> linked_container<var<Type>, container<CType, Container>> { return { v, std::move(r) }; }
+
+        template<class CType, class Container, class ...Args>
+        auto operator<(tuple_of_vars<Args...>&& v, container<CType, Container>&& r) -> linked_container<tuple_of_vars<Args...>, container<CType, Container>> { return { v, std::move(r) }; }
+
+        /**
+         * Operators and functions for constructing a container syntax.
+         * Eiter a comma operator to use standard vector, or a function to choose
+         * the container.
+         */
+        template<class A, class B>
+        container_syntax<std::vector<std::tuple<A, B>>, A, B&> operator,(expr<A> a, var<B> b) { return { { a, b } }; }
+
+        template<class A, class B>
+        container_syntax<std::vector<std::tuple<A, B>>, A&, B> operator,(var<A> a, expr<B> b) { return { { a, b } }; }
+
+        template<class A, class B>
+        container_syntax<std::vector<std::tuple<A, B>>, A, B> operator,(expr<A> a, expr<B> b) { return { { a, b } }; }
+
+        template<class A, class ...Rest>
+        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest&..., A> operator,(tuple_of_vars<Rest...>&& a, expr<A> b) {
+            return { std::tuple_cat(a.vars, std::tuple{ b }) };
+        }
+
+        template<class A, class ...Rest>
+        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest..., A> operator,(container_syntax<std::vector<std::tuple<Rest...>>, Rest...>&& a, var<A> b) {
+            return { std::tuple_cat(a.expressions, std::tuple{ b }) };
+        }
+
+        template<class A, class ...Rest>
+        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest..., A> operator,(container_syntax<std::vector<std::tuple<Rest...>>, Rest...>&& a, expr<A> b) {
+            return { std::tuple_cat(a.expressions, std::tuple{ b }) };
+        }
+
+        template<template<class...> class Container, class ...Types>
+        using container_syntax_type = container_syntax<
+            Container<std::conditional_t<sizeof...(Types) == 1, 
+                std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
+                std::tuple<typename std::decay_t<Types>::value_type...>>>, 
+            typename std::decay_t<Types>::type...>;
+
+        template<template<class...> class Container, class Ty, class ...Types>
+        using container_syntax_type2 = container_syntax<
+            Container<typename std::decay_t<Ty>::value_type, 
+                std::conditional_t<sizeof...(Types) == 1,
+                    std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>, 
+                    std::tuple<typename std::decay_t<Types>::value_type...>>>,
+            typename std::decay_t<Ty>::type, typename std::decay_t<Types>::type...>;
+
+        template<class ...Types>
+        container_syntax_type<std::vector, Types...> vector(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::list, Types...> list(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::forward_list, Types...> forward_list(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::deque, Types...> deque(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::stack, Types...> stack(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::queue, Types...> queue(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::priority_queue, Types...> priority_queue(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::set, Types...> set(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::multiset, Types...> multiset(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::unordered_set, Types...> unordered_set(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class ...Types>
+        container_syntax_type<std::unordered_multiset, Types...> unordered_multiset(Types ...tys) {
+            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class Ty, class ...Types>
+        container_syntax_type2<std::map, Ty, Types...> map(Ty ty, Types ...tys) {
+            return { { (expr<typename std::decay_t<Ty>::type>)ty, (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class Ty, class ...Types>
+        container_syntax_type2<std::multimap, Ty, Types...> multimap(Ty ty, Types ...tys) {
+            return { { (expr<typename std::decay_t<Ty>::type>)ty, (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class Ty, class ...Types>
+        container_syntax_type2<std::unordered_map, Ty, Types...> unordered_map(Ty ty, Types ...tys) {
+            return { {(expr<typename std::decay_t<Ty>::type>)ty, (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        template<class Ty, class ...Types>
+        container_syntax_type2<std::unordered_multimap, Ty, Types...> unordered_multimap(Ty ty, Types ...tys) {
+            return { { (expr<typename std::decay_t<Ty>::type>)ty, (expr<typename std::decay_t<Types>::type>)tys... } };
+        }
+
+        /**
+         * Operators for initializing a list comprehension object with a container syntax and the first linked container.
+         */
+        template<class ContainerSyntax, class Container, class CType>
+        list_comprehension<ContainerSyntax, linked_container<CType, Container>>
+            operator|(const ContainerSyntax& v, linked_container<CType, Container>&& c) {
+            return { v, linked_container<CType, Container>{ std::move(c) }, {} };
+        }
+
+        template<class Type, class Container, class CType>
+        list_comprehension<container_syntax<container_for<std::decay_t<Type>>, Type&>, linked_container<CType, Container>>
+            operator|(var<Type> v, linked_container<CType, Container>&& c) {
+            return { container_syntax<container_for<std::decay_t<Type>>, Type&>{ v }, std::move(c), {} };
+        }
+
+        template<class Type, class Container, class CType>
+        list_comprehension<container_syntax<container_for<std::decay_t<Type>>, Type>, linked_container<CType, Container>>
+            operator|(expr<Type> v, linked_container<CType, Container>&& c) {
+            return { container_syntax<container_for<std::decay_t<Type>>, Type>{ v }, std::move(c), {} };
+        }
+
+        template<class Container, class CType, class...Args>
+        list_comprehension<container_syntax<std::vector<std::tuple<Args...>>, Args&...>, linked_container<CType, Container>>
+            operator|(tuple_of_vars<Args...>&& v, linked_container<CType, Container>&& c) {
+            return { container_syntax<std::vector<std::tuple<Args...>>, Args&...>{ v.vars }, std::move(c), {} };
+        }
+
+        /**
+         * Operators for expanding the initial list comprehension with
+         * more linked containers or constraints.
+         */
+        template<class ContainerSyntax, class Container, class CType, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, LinkedContainers..., linked_container<CType, Container>>
+            operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, linked_container<CType, Container>&& c) {
+            return { std::move(v.syntax), std::tuple_cat(std::move(v.containers), std::tuple{ c }), std::move(v.constraints) };
+        }
+
+        template<class ContainerSyntax, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, LinkedContainers...>
+            operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<bool> c) {
+            v.constraints.push_back(c);
+            return v;
+        }
+
+        template<std::convertible_to<bool> Type, class ContainerSyntax, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, LinkedContainers...>
+            operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<Type> c) {
+            v.constraints.push_back({ [c = std::move(c)] () { return static_cast<bool>(c()); } });
+            return v;
+        }
+
+        /**
+         * Operators to construct tuple of containers.
+         */
+        template<has_begin_end A, has_begin_end B>
+        tuple_of_containers<A, B> operator,(A&& a, B&& b) {
+            return { { { std::forward<A>(a) }, { std::forward<B>(b) } } };
+        }
+
+        template<has_begin_end B>
+        tuple_of_containers<literalview, B> operator,(const char* a, B&& b) {
+            return { { literalview{ a }, { std::forward<B>(b) } } };
+        }
+
+        template<has_begin_end A>
+        tuple_of_containers<A, literalview> operator,(A&& a, const char* b) {
+            return { { { std::forward<A>(a) }, literalview{ b } } };
+        }
+
+        template<has_begin_end A, has_begin_end ...Rest>
+        tuple_of_containers<Rest..., A> operator,(tuple_of_containers<Rest...>&& a, A&& b) {
+            return { std::tuple_cat(a.containers, std::tuple{ std::forward<A>(b) }) };
+        }
+
+        template<has_begin_end ...Rest>
+        tuple_of_containers<Rest..., literalview> operator,(tuple_of_containers<Rest...>&& a, const char* b) {
+            return { std::tuple_cat(a.containers, std::tuple{ literalview{ b } }) };
+        }
+
+        template<has_begin_end A, has_begin_end ...Rest>
+        tuple_of_containers<A, Rest...> operator,(A&& b, tuple_of_containers<Rest...>&& a) {
+            return { std::tuple_cat(std::tuple<A>{ std::forward<A>(b) }, a.containers) };
+        }
+
+        template<has_begin_end ...Rest>
+        tuple_of_containers<Rest..., literalview> operator,(const char* b, tuple_of_containers<Rest...>&& a) {
+            return { std::tuple_cat(std::tuple{ literalview{ b } }, a.containers) };
+        }
+
+        template<has_begin_end ...As, has_begin_end ...Rest>
+        tuple_of_containers<Rest..., As...> operator,(tuple_of_containers<Rest...>&& a, tuple_of_containers<As...>&& b) {
+            return { std::tuple_cat(a.containers,  b.containers) };
+        }
+    }
 
     /**
      * Expression wrapper is used to simplify templated functions by generalizing how
-     * to get the value, for an expression that requires the operator(). 
+     * to get the value, for an expression that requires the operator().
      */
     template<class Type>
     struct expr_wrapper;
@@ -221,12 +1025,12 @@ namespace kaixo {
     struct expr_wrapper<Type> {
         std::decay_t<Type> value;
         inline typename std::decay_t<Type>::type get() {
-            return value();
+            return value.run_expression();
         }
     };
 
     template<class Type> requires (!std::derived_from<std::decay_t<Type>, is_an_expr>)
-    struct expr_wrapper<Type> {
+        struct expr_wrapper<Type> {
         Type value;
         inline Type get() {
             return value;
@@ -234,12 +1038,12 @@ namespace kaixo {
     };
 
     /**
-     * Specializations of the expression class for standard classes 
+     * Specializations of the expression class for standard classes
      * and containers that contain all their member functions.
      */
 #define lc_mem_fun(y, x) \
     template<class ...Args> auto x(Args&& ...exprs) const { return kaixo::expr{ [s = *this, ...args = expr_wrapper<Args>{ \
-        std::forward<Args>(exprs) }]() mutable { return s().y::x(args.get()...); } }; } \
+        std::forward<Args>(exprs) }]() mutable { return s.run_expression().y::x(args.get()...); } }; } \
 
     template<class String, class Storage = expr_storage<String>>
     struct string_expression : expr_base<String, Storage> {
@@ -492,712 +1296,79 @@ namespace kaixo {
         lc_mem_fun(type, value_comp);
     };
 
+    template<class Any, class Storage = expr_storage<Any>>
+    struct any_expression : expr_base<Any, Storage> {
+        using type = std::decay_t<Any>;
+        using expr_base<Any, Storage>::expr_base;
+        using expr_base<Any, Storage>::operator=;
+
+        lc_mem_fun(type, operator=);
+        lc_mem_fun(type, emplace);
+        lc_mem_fun(type, reset);
+        lc_mem_fun(type, swap);
+        lc_mem_fun(type, has_value);
+    };
+        
+    template<class Bitset, class Storage = expr_storage<Bitset>>
+    struct bitset_expression : expr_base<Bitset, Storage> {
+        using type = std::decay_t<Bitset>;
+        using expr_base<Bitset, Storage>::expr_base;
+        using expr_base<Bitset, Storage>::operator=;
+
+        lc_mem_fun(type, operator[]);
+        lc_mem_fun(type, test);
+        lc_mem_fun(type, all);
+        lc_mem_fun(type, any);
+        lc_mem_fun(type, none);
+        lc_mem_fun(type, count);
+        lc_mem_fun(type, size);
+        lc_mem_fun(type, operator&=);
+        lc_mem_fun(type, operator|=);
+        lc_mem_fun(type, operator^=);
+        lc_mem_fun(type, operator<<=);
+        lc_mem_fun(type, operator>>=);
+        lc_mem_fun(type, operator<<);
+        lc_mem_fun(type, operator>>);
+        lc_mem_fun(type, set);
+        lc_mem_fun(type, reset);
+        lc_mem_fun(type, flip);
+        lc_mem_fun(type, to_string);
+        lc_mem_fun(type, to_ulong);
+        lc_mem_fun(type, to_ullong);
+    };
+                
+    template<class Function, class Storage = expr_storage<Function>>
+    struct function_expression : expr_base<Function, Storage> {
+        using type = std::decay_t<Function>;
+        using expr_base<Function, Storage>::expr_base;
+        using expr_base<Function, Storage>::operator=;
+
+        lc_mem_fun(type, operator=);
+        lc_mem_fun(type, swap);
+        lc_mem_fun(type, assign);
+        lc_mem_fun(type, operator());
+        lc_mem_fun(type, target_type);
+        lc_mem_fun(type, target);
+    };
+
 #define COMMA ,
 #define make_expr(cls, e, ...) \
     template<__VA_ARGS__ class Storage> struct expr<cls, Storage> : e<cls, Storage> { using type = cls; using value_type = cls; using e<cls, Storage>::e; }; \
-    template<__VA_ARGS__ class Storage> struct expr<cls&, Storage> : e<cls&, Storage> { using type = cls; using value_type = cls; using e<cls&, Storage>::e; }; \
+    template<__VA_ARGS__ class Storage> struct expr<cls&, Storage> : e<cls&, Storage> { using type = cls&; using value_type = cls; using e<cls&, Storage>::e; }; \
+    template<__VA_ARGS__ class Storage> struct expr<const cls&, Storage> : e<const cls&, Storage> { using type = const cls&; using value_type = const cls; using e<const cls&, Storage>::e; }; \
 
     make_expr(std::string, string_expression);
-    make_expr(std::tuple<Args...>, tuple_expression, class ...Args,);
-    make_expr(std::vector<Args...>, vector_expression, class ...Args,);
-    make_expr(std::list<Args...>, list_expression, class ...Args,);
-    make_expr(std::set<Args...>, set_expression, class ...Args,);
-    make_expr(std::array<Arg COMMA N>, array_expression, class Arg, size_t N,);
-    make_expr(std::map<Args...>, map_expression, class ...Args,);
+    make_expr(std::tuple<Args...>, tuple_expression, class ...Args, );
+    make_expr(std::vector<Args...>, vector_expression, class ...Args, );
+    make_expr(std::list<Args...>, list_expression, class ...Args, );
+    make_expr(std::set<Args...>, set_expression, class ...Args, );
+    make_expr(std::array<Arg COMMA N>, array_expression, class Arg, size_t N, );
+    make_expr(std::map<Args...>, map_expression, class ...Args, );
+    make_expr(std::any, any_expression, );
+    make_expr(std::bitset<N>, bitset_expression, size_t N, );
+    make_expr(std::function<Args...>, function_expression, class ...Args, );
 #undef COMMA
-
-#define var_op(x)\
-    template<class A, class B> auto operator x(var<A> a, var<B> b) { return expr{ [a, b]() { return a() x b(); } }; } \
-    template<class A, class B> auto operator x(expr<A> a, var<B> b) { return expr{ [a, b]() { return a() x b(); } }; } \
-    template<class A, class B> auto operator x(var<A> a, expr<B> b) { return expr{ [a, b]() { return a() x b(); } }; } \
-    template<class A, class B> auto operator x(expr<A> a, expr<B> b) { return expr{ [a, b]() { return a() x b(); } }; } \
-    template<class A, class B> auto operator x(expr<A> a, const B& b) { return expr{ [a, b]() { return a() x b; } }; } \
-    template<class A, class B> auto operator x(var<A> a, const B& b) { return expr{ [a, b]() { return a() x b; } }; } \
-    template<class A, class B> auto operator x(const A& a, expr<B> b) { return expr{ [a, b]() { return a x b(); } }; } \
-    template<class A, class B> auto operator x(const A& a, var<B> b) { return expr{ [a, b]() { return a x b(); } }; }
-
-    var_op(+);
-    var_op(-);
-    var_op(/ );
-    var_op(*);
-    var_op(%);
-    var_op(== );
-    var_op(!= );
-    var_op(<= );
-    var_op(>= );
-    var_op(> );
-    var_op(< );
-    var_op(<=> );
-    var_op(&&);
-    var_op(&);
-    var_op(|| );
-    var_op(| );
-    var_op(<< );
-    var_op(>> );
-
-#define u_var_op(x)\
-    template<class A> auto operator x(var<A> a) { return expr{ [a]() { return x a(); } }; } \
-    template<class A> auto operator x(expr<A> a) { return expr{ [a]() { return x a(); } }; } \
-
-    u_var_op(-);
-    u_var_op(+);
-    u_var_op(~);
-    u_var_op(!);
-    u_var_op(*);
-    u_var_op(&);
-
-    /**
-     * Simple tuple of vars.
-     */
-    template<class ...Args>
-    struct tuple_of_vars {
-        using type = std::tuple<Args...>;
-        std::tuple<var<Args>...> vars;
-
-        void operator=(type&& a) { vars = a; }
-        void operator=(const type& a) { vars = a; }
-    };
-
-    template<class A, class B>
-    tuple_of_vars<A, B> operator,(var<A> a, var<B> b) { return { { a, b } }; }
-
-    template<class A, class ...Args>
-    tuple_of_vars<Args..., A> operator,(tuple_of_vars<Args...> a, var<A> b) { return { std::tuple_cat(a.vars, std::tuple{ b }) }; }
-
-    template<class A, class ...Args>
-    tuple_of_vars<A, Args...> operator,(var<A> b, tuple_of_vars<Args...> a) { return { std::tuple_cat(std::tuple{ b }, a.vars) }; }
-    
-    template<class ...As, class ...Args>
-    tuple_of_vars<As..., Args...> operator,(tuple_of_vars<As...> b, tuple_of_vars<Args...> a) { return { std::tuple_cat(b.vars, a.vars) }; }
-
-    /**
-     * Wrapper for a container, used when creating a cartesian product, works
-     * with any class that defines a begin and end method.
-     */
-    template<class Type, has_begin_end Container>
-    struct container {
-        using type = Type;
-        Container container;
-
-        auto begin() { return container.begin(); }
-        auto end() { return container.end(); }
-        auto size() const { return container.size(); }
-    };
-
-    /**
-     * A struct that links a var to a container, this is stored in the final
-     * link comprehension object.
-     */
-    template<class Type, has_begin_end Container>
-    struct linked_container {
-        using type = typename Type::type;
-        constexpr static bool has_var = false;
-        Type variable;
-        Container container;
-        using iterator = decltype(container.begin());
-
-        iterator begin() { return container.begin(); }
-        iterator end() { return container.end(); }
-        size_t size() const { return container.size(); }
-    };
-
-    /**
-     * Specialization for storing a variable that results in a container.
-     * So we can store the variable as a reference.
-     */
-    template<class Type, has_begin_end VarType>
-    struct linked_container<Type, container<typename VarType::value_type, var<VarType>>> {
-        using type = typename Type::type;
-        constexpr static bool has_var = true;
-        Type variable;
-        container<typename VarType::value_type, var<VarType>> container;
-        using iterator = decltype(container.begin()());
-
-        iterator begin() { return container.begin()(); }
-        iterator end() { return container.end()(); }
-        size_t size() const { return container.size()(); }
-    };
-
-    /**
-     * the '-' and '<' operators are used to create a '<-' operator, the unary '-'
-     * creates a container from some class that defines a begin() and end(), and the '<'
-     * links that container to a variable.
-     */
-
-    template<has_begin_end Container>
-    auto operator-(Container& r) -> container<typename Container::value_type, Container&> { return { r }; }
-
-    template<has_begin_end Container>
-    auto operator-(Container&& r) -> container<typename Container::value_type, Container> { return { std::move(r) }; }
-
-    template<has_begin_end Type>
-    auto operator-(var<Type> r) -> container<typename Type::value_type, var<Type>> { return { r }; }
-
-    template<class Type, class CType, class Container>
-    auto operator<(var<Type> v, container<CType, Container>&& r) -> linked_container<var<Type>, container<CType, Container>> { return { v, std::move(r) }; }
-
-    template<class CType, class Container, class ...Args>
-    auto operator<(tuple_of_vars<Args...>&& v, container<CType, Container>&& r) -> linked_container<tuple_of_vars<Args...>, container<CType, Container>> { return { v, std::move(r) }; }
-
-    /**
-     * This is the part before the '|', and defined what type of container the
-     * result will be stored in. Also contains a generate method to easily generate an entry
-     * for the resulting container given the values currently in the variables.
-     */
-    template<class Container, class ...Types>
-    struct container_syntax {
-        using container = Container;
-        std::tuple<expr<Types>...> expressions;
-
-        template<class T>
-        inline void generate(T& container) { return m_Gen(container, std::make_index_sequence<sizeof...(Types)>{}); }
-
-        template<class T, size_t ...Is>
-        inline void m_Gen(T& container, std::index_sequence<Is...>) {
-            if constexpr (std::same_as<std::string, T>)
-                container.push_back(std::get<Is>(expressions)()...);
-            else if constexpr (has_emplace_back<T, typename expr<Types>::type...>)
-                container.emplace_back(std::get<Is>(expressions)()...);
-            else if constexpr (has_try_emplace<T, typename expr<Types>::type...>)
-                container.try_emplace(std::get<Is>(expressions)()...);
-            else
-                container.emplace(std::get<Is>(expressions)()...);
-        }
-    };
-
-    /**
-     * Operators and functions for constructing a container syntax.
-     * Eiter a comma operator to use standard vector, or a function to choose
-     * the container.
-     */
-
-    template<class A, class B>
-    container_syntax<std::vector<std::tuple<A, B>>, A, B&> operator,(expr<A> a, var<B> b) {
-        return { { a, b } };
-    }
-
-    template<class A, class B>
-    container_syntax<std::vector<std::tuple<A, B>>, A&, B> operator,(var<A> a, expr<B> b) {
-        return { { a, b } };
-    }
-
-    template<class A, class B>
-    container_syntax<std::vector<std::tuple<A, B>>, A, B> operator,(expr<A> a, expr<B> b) {
-        return { { a, b } };
-    }
-
-    template<class A, class ...Rest>
-    container_syntax<std::vector<std::tuple<Rest..., A>>, Rest&..., A> operator,(tuple_of_vars<Rest...>&& a, expr<A> b) {
-        return { std::tuple_cat(a.vars, std::tuple{ b }) };
-    }
-
-    template<class A, class ...Rest>
-    container_syntax<std::vector<std::tuple<Rest..., A>>, Rest..., A> operator,(container_syntax<std::vector<std::tuple<Rest...>>, Rest...>&& a, var<A> b) {
-        return { std::tuple_cat(a.expressions, std::tuple{ b }) };
-    }
-
-    template<class A, class ...Rest>
-    container_syntax<std::vector<std::tuple<Rest..., A>>, Rest..., A> operator,(container_syntax<std::vector<std::tuple<Rest...>>, Rest...>&& a, expr<A> b) {
-        return { std::tuple_cat(a.expressions, std::tuple{ b }) };
-    }
-
-    template<class ...Types>
-    container_syntax<std::vector<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> vector(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class ...Types>
-    container_syntax<std::list<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> list(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class ...Types>
-    container_syntax<std::forward_list<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> forward_list(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class ...Types>
-    container_syntax<std::deque<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> deque(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-    
-    template<class ...Types>
-    container_syntax<std::stack<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> stack(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-    
-    template<class ...Types>
-    container_syntax<std::queue<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> queue(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-    
-    template<class ...Types>
-    container_syntax<std::priority_queue<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> priority_queue(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class ...Types>
-    container_syntax<std::set<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> set(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class ...Types>
-    container_syntax<std::multiset<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> multiset(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class ...Types>
-    container_syntax<std::unordered_set<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> unordered_set(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-    
-    template<class ...Types>
-    container_syntax<std::unordered_multiset<std::conditional_t<sizeof...(Types) == 1, std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>,
-        std::tuple<typename std::decay_t<Types>::value_type...>>>, typename std::decay_t<Types>::type...> unordered_multiset(Types ...tys) {
-        return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class Ty, class ...Types>
-    container_syntax<std::map<typename std::decay_t<Ty>::value_type, std::conditional_t<sizeof...(Types) == 1,
-        std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>, std::tuple<typename std::decay_t<Types>::value_type...>>>,
-        typename std::decay_t<Ty>::type, typename std::decay_t<Types>::type...> map(Ty ty, Types ...tys) {
-        return { { (expr<typename std::decay_t<Ty>::type>)ty, (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class Ty, class ...Types>
-    container_syntax<std::multimap<typename std::decay_t<Ty>::value_type, std::conditional_t<sizeof...(Types) == 1,
-        std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>, std::tuple<typename std::decay_t<Types>::value_type...>>>,
-        typename std::decay_t<Ty>::type, typename std::decay_t<Types>::type...> multimap(Ty ty, Types ...tys) {
-        return { { (expr<typename std::decay_t<Ty>::type>)ty, (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    template<class Ty, class ...Types>
-    container_syntax<std::unordered_map<typename std::decay_t<Ty>::value_type, std::conditional_t<sizeof...(Types) == 1,
-        std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>, std::tuple<typename std::decay_t<Types>::value_type...>>>,
-        typename std::decay_t<Ty>::type, typename std::decay_t<Types>::type...> unordered_map(Ty ty, Types ...tys) {
-        return { {(expr<typename std::decay_t<Ty>::type>)ty, (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-    
-    template<class Ty, class ...Types>
-    container_syntax<std::unordered_multimap<typename std::decay_t<Ty>::value_type, std::conditional_t<sizeof...(Types) == 1,
-        std::tuple_element_t<0, std::tuple<typename std::decay_t<Types>::value_type...>>, std::tuple<typename std::decay_t<Types>::value_type...>>>,
-        typename std::decay_t<Ty>::type, typename std::decay_t<Types>::type...> unordered_multimap(Ty ty, Types ...tys) {
-        return { { (expr<typename std::decay_t<Ty>::type>)ty, (expr<typename std::decay_t<Types>::type>)tys... } };
-    }
-
-    /**
-     * Everything combined into a single object, contains the container syntax, all
-     * the linked containers, and also some constraints, which are expressions that evaluate to 'bool'
-     */
-    template<class ContainerSyntax, class ...LinkedContainers>
-    struct list_comprehension {
-        using container = typename ContainerSyntax::container;
-        constexpr static auto size = sizeof...(LinkedContainers);
-        constexpr static auto sequence = std::make_index_sequence<size>{};
-        constexpr static bool has_var = (LinkedContainers::has_var || ...);
-        
-        ContainerSyntax syntax;
-        std::tuple<LinkedContainers...> containers;
-        std::vector<expr<bool>> constraints;
-
-        // Get result as an expression for later evaluation.
-        expr<container> get_var() && {
-            return expr{ [cpy = std::move(*this)]() mutable { return cpy.m_Get(0); } };
-        }
-
-        expr<container> get_var()& {
-            return expr{ [this] () { return this->m_Get(0); } };
-        }
-
-        container operator*() { return m_Get(0); }
-        container get() { return this->m_Get(0); }
-        container take(std::size_t n) { return this->m_Get(n); }
-
-    private:
-        inline container m_Get(std::size_t n) {
-            container result;
-
-            bool needs_reset[sizeof...(LinkedContainers)];
-            std::fill(std::begin(needs_reset), std::end(needs_reset), false);
-
-            // Check whether container has any content 
-            if (std::get<0>(containers).size() == 0)
-                return result;
-
-            std::tuple<LinkedContainers::iterator...> its;
-            set_begin(its, sequence); // Initialize all iterators to begin
-
-            int index = size - 1;
-            bool done = false;
-            while (!done) { // This will loop through all the values in the cartesian product of the linked containers.
-                set_values(its, sequence); // Set all vars to the values that the iterators point to.
-
-                bool _match = true;
-                for (auto& c : constraints) // Check all constraints.
-                    _match &= c();
-
-                if (_match) { // If all matched, generate an entry, and add to result.
-                    syntax.generate(result);
-                    if (n && result.size() == n)
-                        break;
-                }
-
-                increment(its, index, sequence); // Increment the iterator
-                while (check_end(its, index, sequence)) { // And check if it's now at the end.
-                    set_begin(its, index, sequence); // Reset the iterator
-                    index--;                         // And go to the next index to increment that one.
-                    if (index == -1) {               // If we're at the end, we're done.
-                        done = true;
-                        break;
-                    }
-
-                    if (!check_end(its, index, sequence)) {
-                        increment(its, index, sequence); // Otherwise increment the iterator and loop to check if also at the end.
-                        
-                        needs_reset[index + 1] = true;
-                    }
-                }
-                if constexpr (has_var) {
-                    for (int i = 0; i < sizeof...(LinkedContainers); i++) {
-                        if (needs_reset[i]) {
-                            set_values(its, sequence);
-                            set_begin(its, i, sequence);
-                            needs_reset[i] = false;
-                        }
-                    }
-                }
-
-                index = size - 1; // Reset index back to 0 for the next iteration.
-            }
-
-            return result;
-        }
-
-        /**
-         * Some helper functions because dealing with tuples
-         * is a living nightmare when also working with changing indices...
-         */
-        template<class T, std::size_t ...Is>
-        inline void set_begin(T& tuple, std::index_sequence<Is...>) {
-            ((void(std::get<Is>(tuple) = std::get<Is>(containers).begin()),
-              has_var && std::get<Is>(containers).size() ? (std::get<Is>(containers).variable = *std::get<Is>(containers).begin(), true) : true),
-                ...);
-        }
-
-        template<class T, std::size_t ...Is>
-        inline void set_begin(T& tuple, std::size_t i, std::index_sequence<Is...>) {
-            ((Is == i ? (std::get<Is>(tuple) = std::get<Is>(containers).begin(), true) : true), ...);
-        }
-
-        template<class T, std::size_t ...Is>
-        inline bool check_end(T& tuple, size_t i, std::index_sequence<Is...>) {
-            bool is_end = false;
-            ((Is == i ? (is_end = std::get<Is>(tuple) == std::get<Is>(containers).end(), true) : true), ...);
-            return is_end;
-        }
-
-        template<class T, std::size_t ...Is>
-        inline void set_values(T& tuple, std::index_sequence<Is...>) {
-            (void(std::get<Is>(containers).variable = *std::get<Is>(tuple)), ...);
-        }
-
-        template<class T, std::size_t ...Is>
-        inline void increment(T& tuple, std::size_t index, std::index_sequence<Is...>) {
-            ((Is == index ? (++std::get<Is>(tuple), true) : true), ...);
-        }
-
-        template<class T, std::size_t ...Is>
-        inline void set_as_end(T& tuple, std::size_t index, std::index_sequence<Is...>) {
-            ((Is == index ? (std::get<Is>(tuple) = std::get<Is>(containers).end(), true) : true), ...);
-        }
-    };
-
-    /**
-     * Operators for initializing a list comprehension object with a container syntax and the first linked container.
-     */
-    template<class ContainerSyntax, class Container, class CType>
-    list_comprehension<ContainerSyntax, linked_container<CType, Container>>
-        operator|(const ContainerSyntax& v, linked_container<CType, Container>&& c) {
-        return { v, linked_container<CType, Container>{ std::move(c) }, {} };
-    }
-
-    template<class Type, class Container, class CType>
-    list_comprehension<container_syntax<container_for<std::decay_t<Type>>, Type&>, linked_container<CType, Container>>
-        operator|(var<Type> v, linked_container<CType, Container>&& c) {
-        return { container_syntax<container_for<std::decay_t<Type>>, Type&>{ v }, std::move(c), {} };
-    }
-
-    template<class Type, class Container, class CType>
-    list_comprehension<container_syntax<container_for<std::decay_t<Type>>, Type>, linked_container<CType, Container>>
-        operator|(expr<Type> v, linked_container<CType, Container>&& c) {
-        return { container_syntax<container_for<std::decay_t<Type>>, Type>{ v }, std::move(c), {} };
-    }
-
-    template<class Container, class CType, class...Args>
-    list_comprehension<container_syntax<std::vector<std::tuple<Args...>>, Args&...>, linked_container<CType, Container>>
-        operator|(tuple_of_vars<Args...>&& v, linked_container<CType, Container>&& c) {
-        return { container_syntax<std::vector<std::tuple<Args...>>, Args&...>{ v.vars }, std::move(c), {} };
-    }
-
-    /**
-     * Operators for expanding the initial list comprehension with
-     * more linked containers or constraints.
-     */
-
-    template<class ContainerSyntax, class Container, class CType, class ...LinkedContainers>
-    list_comprehension<ContainerSyntax, LinkedContainers..., linked_container<CType, Container>>
-        operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, linked_container<CType, Container>&& c) {
-        return { std::move(v.syntax), std::tuple_cat(std::move(v.containers), std::tuple{ c }), std::move(v.constraints) };
-    }
-
-    template<class ContainerSyntax, class ...LinkedContainers>
-    list_comprehension<ContainerSyntax, LinkedContainers...>
-        operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<bool> c) {
-        v.constraints.push_back(c);
-        return v;
-    }
-
-    template<std::convertible_to<bool> Type, class ContainerSyntax, class ...LinkedContainers>
-    list_comprehension<ContainerSyntax, LinkedContainers...>
-        operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<Type> c) {
-        v.constraints.push_back({ [c = std::move(c)] () { return static_cast<bool>(c()); } });
-        return v;
-    }
-
-    struct literalview {
-        using value_type = char;
-        using iterator = char*;
-
-        literalview(const char* d) : data(d) {}
-       
-        char* begin() { return const_cast<char*>(data.data()); }
-        char* end() { return const_cast<char*>(data.data() + data.size()); }
-        size_t size() const { return data.size(); }
-    
-    private: 
-        std::string_view data;
-    };
-
-    literalview operator""lv(const char* d, size_t) {
-        return literalview{ d };
-    }
-
-    /**
-     * Used for parallel iteration of containers. Stores multiple containers
-     * and defines an iterator that returns a tuple of references to the values.
-     */
-    template<has_begin_end... Containers>
-    struct tuple_of_containers {
-        using value_type = std::tuple<typename std::decay_t<Containers>::value_type&...>;
-        std::tuple<Containers...> containers;
-
-        struct iterator {
-            using iterator_category = std::forward_iterator_tag;
-            using value_type = decltype(std::tuple_cat(std::tuple{ *std::declval<typename std::decay_t<Containers>::iterator>() }...));
-            using difference_type = std::ptrdiff_t;
-            using pointer = value_type*;
-            using reference = value_type&;
-
-            constexpr static auto seq = std::make_index_sequence<sizeof...(Containers)>{};
-
-            iterator& operator++() { return increment_r(seq); }
-            iterator operator++(int) { return increment(seq); }
-            value_type operator*() { return get(seq); }
-            bool operator==(const iterator& o) const { return equal(o, seq); }
-            std::tuple<typename std::decay_t<Containers>::iterator...> iterators;
-
-        private:
-            template<size_t ...Is>
-            value_type get(std::index_sequence<Is...>) { 
-                return { std::tuple_cat(std::tuple{ *std::get<Is>(iterators) }...) };
-            }
-
-            template<size_t ...Is>
-            iterator& increment_r(std::index_sequence<Is...>) {
-                ((++std::get<Is>(iterators)), ...);
-                return *this;
-            }
-
-            template<size_t ...Is>
-            iterator increment(std::index_sequence<Is...>) {
-                ((std::get<Is>(iterators)++), ...);
-                return *this;
-            }
-
-            template<size_t ...Is>
-            bool equal(const iterator& other, std::index_sequence<Is...>) const {
-                return ((std::get<Is>(iterators) == std::get<Is>(other.iterators)) || ...);
-            }
-        };
-
-        iterator begin() { return seq_begin(std::make_index_sequence<sizeof...(Containers)>{}); };
-        iterator end() { return seq_end(std::make_index_sequence<sizeof...(Containers)>{}); };
-        size_t size() const { return seq_size(std::make_index_sequence<sizeof...(Containers)>{}); }
-
-    private:
-        template<size_t ...Is>
-        size_t seq_size(std::index_sequence<Is...>) const {
-            size_t _size = std::get<0>(containers).size();
-            ((std::get<Is>(containers).size() < _size ? (_size = std::get<Is>(containers).size(), false) : false), ...);
-            return _size;
-        }
-
-        template<size_t ...Is>
-        iterator seq_begin(std::index_sequence<Is...>) { return { { std::get<Is>(containers).begin()... } }; }
-
-        template<size_t ...Is>
-        iterator seq_end(std::index_sequence<Is...>) { return { { std::get<Is>(containers).end()... } }; }
-    };
-
-    /**
-     * Operators to construct tuple of containers.
-     */
-    template<has_begin_end A, has_begin_end B>
-    tuple_of_containers<A, B> operator,(A&& a, B&& b) {
-        return { { { std::forward<A>(a) }, { std::forward<B>(b) } } };
-    }
-
-    template<has_begin_end B>
-    tuple_of_containers<literalview, B> operator,(const char* a, B&& b) {
-        return { { literalview{ a }, { std::forward<B>(b) } } };
-    }
-
-    template<has_begin_end A>
-    tuple_of_containers<A, literalview> operator,(A&& a, const char* b) {
-        return { { { std::forward<A>(a) }, literalview{ b } } };
-    }
-
-    template<has_begin_end A, has_begin_end ...Rest>
-    tuple_of_containers<Rest..., A> operator,(tuple_of_containers<Rest...>&& a, A&& b) {
-        return { std::tuple_cat(a.containers, std::tuple{ std::forward<A>(b) }) };
-    }
-
-    template<has_begin_end ...Rest>
-    tuple_of_containers<Rest..., literalview> operator,(tuple_of_containers<Rest...>&& a, const char* b) {
-        return { std::tuple_cat(a.containers, std::tuple{ literalview{ b } }) };
-    }
-
-    template<has_begin_end A, has_begin_end ...Rest>
-    tuple_of_containers<A, Rest...> operator,(A&& b, tuple_of_containers<Rest...>&& a) {
-        return { std::tuple_cat(std::tuple<A>{ std::forward<A>(b) }, a.containers) };
-    }
-
-    template<has_begin_end ...Rest>
-    tuple_of_containers<Rest..., literalview> operator,(const char* b, tuple_of_containers<Rest...>&& a) {
-        return { std::tuple_cat(std::tuple{ literalview{ b } }, a.containers) };
-    }
-
-    template<has_begin_end ...As, has_begin_end ...Rest>
-    tuple_of_containers<Rest..., As...> operator,(tuple_of_containers<Rest...>&& a, tuple_of_containers<As...>&& b) {
-        return { std::tuple_cat(a.containers,  b.containers) };
-    }
-
-    /**
-     * Some sugar on top that allows syntax like
-     * 'lc[a | a <- range(0, 10)]' for 'true' list comprehension.
-     */
-    struct lce {
-        template<class ContainerSyntax, class ...LinkedContainers>
-        auto operator[](list_comprehension<ContainerSyntax, LinkedContainers...>&& l) { return std::move(l).get(); };
-    } lc;
-
-    struct lcev {
-        template<class ContainerSyntax, class ...LinkedContainers>
-        auto operator[](list_comprehension<ContainerSyntax, LinkedContainers...>&& l) { return std::move(l).get_var(); };
-    } lcv;
-
-
-    struct infinity {
-        template<class T> requires (std::floating_point<T> || std::integral<T>)
-            operator T() { return std::numeric_limits<T>::max(); }
-    } inf;
-
-    /**
-     * Simple range class with a start and end, plus an iterator because
-     * list comprehension uses iterators to create the cartesian product of all sets.
-     */
-    template<class Type>
-    struct range {
-        using value_type = Type;
-
-        struct iterator {
-            using iterator_category = std::bidirectional_iterator_tag;
-            using value_type = Type;
-            using difference_type = std::ptrdiff_t;
-            using pointer = Type*;
-            using reference = Type&;
-            Type cur;
-            iterator& operator++() { ++cur; return *this; }
-            iterator& operator--() { --cur; return *this; }
-            iterator operator++(int) { return { cur + 1 }; }
-            iterator operator--(int) { return { cur - 1 }; }
-            Type& operator*() { return cur; }
-            Type* operator&() { return &cur; }
-            bool operator==(const iterator& o) const { return o.cur == cur; }
-        };
-
-        using const_iterator = iterator;
-        using reverse_iterator = std::reverse_iterator<iterator>;
-        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-
-        range(Type&& x, Type&& y) { init(a, std::move(x)); init(b, std::move(y)); }
-        range(Type& x, Type&& y) { init(a, x); init(b, std::move(y)); }
-        range(Type&& x, Type& y) { init(a, std::move(x)); init(b, y); }
-        range(Type& x, Type& y) { init(a, x); init(b, y); }
-        range(Type&& x, expr<Type> y) { init(a, std::move(x)); init(b, y); }
-        range(Type& x, expr<Type> y) { init(a, x); init(b, y); }
-        range(Type&& x, var<Type> y) { init(a, std::move(x)); init(b, y); }
-        range(Type& x, var<Type> y) { init(a, x); init(b, y); }
-        range(var<Type> x, Type&& y) { init(a, x); init(b, std::move(y)); }
-        range(expr<Type> x, Type&& y) { init(a, x); init(b, std::move(y)); }
-        range(var<Type> x, Type& y) { init(a, x); init(b, y); }
-        range(expr<Type> x, Type& y) { init(a, x); init(b, y); }
-        range(var<Type> x, var<Type> y) { init(a, x); init(b, y); }
-        range(expr<Type> x, var<Type> y) { init(a, x); init(b, y); }
-        range(var<Type> x, expr<Type> y) { init(a, x); init(b, y); }
-        range(expr<Type> x, expr<Type> y) { init(a, x); init(b, y); }
-        range(Type&& x, infinity& y) { init(a, std::move(x)); init(b, y); }
-        range(Type& x, infinity& y) { init(a, x); init(b, y); }
-        range(var<Type> x, infinity& y) { init(a, x); init(b, y); }
-        range(expr<Type> x, infinity& y) { init(a, x); init(b, y); }
-
-        iterator begin() { return { a() }; }
-        iterator end() { return { b() }; }
-        const_iterator begin() const { return { a() }; }
-        const_iterator end() const { return { b() }; }
-        const_iterator cbegin() const { return begin(); }
-        const_iterator cend() const { return end(); }
-        reverse_iterator rbegin() { return end(); }
-        reverse_iterator rend() { return begin(); }
-        const_reverse_iterator rbegin() const { return end(); }
-        const_reverse_iterator rend() const { return begin(); }
-        const_reverse_iterator crbegin() const { return end(); }
-        const_reverse_iterator crend() const { return begin(); }
-
-        size_t size() const { return b() - a(); }
-    private:
-        expr<Type> a, b;
-
-        void init(expr<Type>& a, infinity& t) { a = [&]() { return (Type)t; }; }
-        void init(expr<Type>& a, var<Type> t) { a = [t]() mutable { return t(); }; }
-        void init(expr<Type>& a, expr<Type> t) { a = t; }
-        void init(expr<Type>& a, Type&& t) { a = [t = std::move(t)]() { return t; }; }
-        void init(expr<Type>& a, const Type& t) { a = [&t]() { return t; }; }
-    };
-
-    template<class Type, class T2>
-    range(Type, T2)->range<Type>;
-
+#undef make_expr
 }
 
 /**
@@ -1208,6 +1379,31 @@ namespace kaixo {
 #define lc_std_fun(y, x) \
     template<class ...Args> auto x(Args&& ...exprs) { return kaixo::expr{ \
         [...args = expr_wrapper<Args>{ std::forward<Args>(exprs) }]() mutable { return y x(args.get()...); } }; } \
+
+#ifndef KAIXO_LC_FUNCTIONAL
+#define KAIXO_LC_FUNCTIONAL 1
+#endif
+#if KAIXO_LC_FUNCTIONAL == 1
+#include <functional>
+namespace kaixo {
+    lc_std_fun(std::, bind_front);
+    lc_std_fun(std::, bind);
+    lc_std_fun(std::, ref);
+    lc_std_fun(std::, cref);
+    lc_std_fun(std::, invoke);
+}
+#endif
+
+#ifndef KAIXO_LC_ANY
+#define KAIXO_LC_ANY 1
+#endif
+#if KAIXO_LC_ANY == 1
+#include <any>
+namespace kaixo {
+    lc_std_fun(std::, any_cast);
+    lc_std_fun(std::, make_any);
+}
+#endif
 
 #ifndef KAIXO_LC_ALGORITHMS
 #define KAIXO_LC_ALGORITHMS 1
