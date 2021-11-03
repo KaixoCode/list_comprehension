@@ -59,7 +59,7 @@ namespace kaixo {
         
         expr_storage() : storage(nullptr) {}
         expr_storage(expr_storage&& other) : storage(other.storage) { other.storage = nullptr; }
-        expr_storage(const expr_storage& other) : storage(other.storage) { storage->refs++; }
+        expr_storage(const expr_storage& other) : storage(other.storage) { if (storage) storage->refs++; }
         ~expr_storage() { clean(); }
 
         template<std::invocable<> T> requires std::same_as<Ty, std::invoke_result_t<T>>
@@ -856,11 +856,6 @@ namespace kaixo {
         }
 
         template<class ...Types>
-        container_syntax_type<std::forward_list, Types...> forward_list(Types ...tys) {
-            return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
-        }
-
-        template<class ...Types>
         container_syntax_type<std::deque, Types...> deque(Types ...tys) {
             return { std::tuple{ (expr<typename std::decay_t<Types>::type>)tys... } };
         }
@@ -991,7 +986,7 @@ namespace kaixo {
 
         template<has_begin_end A, has_begin_end ...Rest>
         tuple_of_containers<Rest..., A> operator,(tuple_of_containers<Rest...>&& a, A&& b) {
-            return { std::tuple_cat(a.containers, std::tuple{ std::forward<A>(b) }) };
+            return { std::tuple_cat(a.containers, std::tuple<A>{ std::forward<A>(b) }) };
         }
 
         template<has_begin_end ...Rest>
@@ -1005,7 +1000,7 @@ namespace kaixo {
         }
 
         template<has_begin_end ...Rest>
-        tuple_of_containers<Rest..., literalview> operator,(const char* b, tuple_of_containers<Rest...>&& a) {
+        tuple_of_containers<literalview, Rest...> operator,(const char* b, tuple_of_containers<Rest...>&& a) {
             return { std::tuple_cat(std::tuple{ literalview{ b } }, a.containers) };
         }
 
@@ -1043,7 +1038,7 @@ namespace kaixo {
      */
 #define lc_mem_fun(y, x) \
     template<class ...Args> auto x(Args&& ...exprs) const { return kaixo::expr{ [s = *this, ...args = expr_wrapper<Args>{ \
-        std::forward<Args>(exprs) }]() mutable { return s.run_expression().y::x(args.get()...); } }; } \
+        std::forward<Args>(exprs) }]() mutable -> decltype(std::declval<y>().x(std::declval<expr_wrapper<Args>>().get()...)) { return s.run_expression().y::x(args.get()...); } }; } \
 
     template<class String, class Storage = expr_storage<String>>
     struct string_expression : expr_base<String, Storage> {
@@ -1369,6 +1364,11 @@ namespace kaixo {
     make_expr(std::function<Args...>, function_expression, class ...Args, );
 #undef COMMA
 #undef make_expr
+
+    template<class Ty>
+    struct to_val_or_ref { using type = Ty; };
+    template<class Ty>
+    struct to_val_or_ref<const Ty&> { using type = Ty; };
 }
 
 /**
@@ -1377,8 +1377,8 @@ namespace kaixo {
  */
 
 #define lc_std_fun(y, x) \
-    template<class ...Args> auto x(Args&& ...exprs) { return kaixo::expr{ \
-        [...args = expr_wrapper<Args>{ std::forward<Args>(exprs) }]() mutable { return y x(args.get()...); } }; } \
+    template<class ...Args> kaixo::expr<typename to_val_or_ref<decltype(y x(std::declval<expr_wrapper<Args>>().get()...))>::type> x(Args&& ...exprs) { return kaixo::expr{ \
+        [...args = expr_wrapper<Args>{ std::forward<Args>(exprs) }]() mutable -> typename to_val_or_ref<decltype(y x(std::declval<expr_wrapper<Args>>().get()...))>::type { return y x(args.get()...); } }; } \
 
 #ifndef KAIXO_LC_FUNCTIONAL
 #define KAIXO_LC_FUNCTIONAL 1

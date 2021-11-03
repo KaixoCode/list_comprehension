@@ -192,12 +192,128 @@ void some_examples() {
 	std::cout << "";
 }
 
+void container_types() {
+	var<int> a, b;
+	lc[(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[vector(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[list(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[deque(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[stack(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[queue(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[priority_queue(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[set(a + b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[multiset(a + b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[unordered_set(a + b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[unordered_multiset(a + b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[map(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[multimap(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[unordered_map(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+	lc[unordered_multimap(a, b + 1) | (a, b) < -(range(0, 10), range(0, 10))];
+}
+
+void all_operators() {
+
+	// Normal ops
+	var<int> a;
+	expr<int> b;
+	a + a; a - a; a / a; a * a; a % a; a == a; a != a; a <= a; a >= a; a > a; a < a; a <=> a; a && a; a & a; a || a; a | a; a << a; a >> a; 
+	1 + a; 1 - a; 1 / a; 1 * a; 1 % a; 1 == a; 1 != a; 1 <= a; 1 >= a; 1 > a; 1 < a; 1 <=> a; 1 && a; 1 & a; 1 || a; 1 | a; 1 << a; 1 >> a; 
+	a + 1; a - 1; a / 1; a * 1; a % 1; a == 1; a != 1; a <= 1; a >= 1; a > 1; a < 1; a <=> 1; a && 1; a & 1; a || 1; a | 1; a << 1; a >> 1; 
+	b + b; b - b; b / b; b * b; b % b; b == b; b != b; b <= b; b >= b; b > b; b < b; b <=> b; b && b; b & b; b || b; b | b; b << b; b >> b; 
+	1 + b; 1 - b; 1 / b; 1 * b; 1 % b; 1 == b; 1 != b; 1 <= b; 1 >= b; 1 > b; 1 < b; 1 <=> b; 1 && b; 1 & b; 1 || b; 1 | b; 1 << b; 1 >> b; 
+	b + 1; b - 1; b / 1; b * 1; b % 1; b == 1; b != 1; b <= 1; b >= 1; b > 1; b < 1; b <=> 1; b && 1; b & 1; b || 1; b | 1; b << 1; b >> 1; 
+	a + b; a - b; a / b; a * b; a % b; a == b; a != b; a <= b; a >= b; a > b; a < b; a <=> b; a && b; a & b; a || b; a | b; a << b; a >> b; 
+	b + a; b - a; b / a; b * a;	b % a; b == a; b != a; b <= a; b >= a; b > a; b < a; b <=> a; b && a; b & a; b || a; b | a;	b << a; b >> a;
+	-a; -b; +a; +b; ~a; ~b; !a; !b; 
+	
+	var<int*> c;
+	expr<int*> d;
+	expr<int&> e;
+	*c; *d; &a; &e;
+
+	// Tuple of vars
+	var<int> x, y;
+	tuple_of_vars<int, int> _1 = (x, y);
+	tuple_of_vars<int, int, int> _2 = (x, y, x);
+	tuple_of_vars<int, int, int> _3 = (x, (y, x));
+	tuple_of_vars<int, int, int, int> _4 = ((x, y), (y, x));
+
+	// Container creation
+	std::vector<int> c1;
+	std::list<int> c2;
+	std::deque<int> c3;
+	range<int> c4(0, 10);
+	std::set<int> c7;
+	std::multiset<int> c8;
+	std::unordered_set<int> c9;
+	std::unordered_multiset<int> c10;
+	std::map<int, int> c11;
+	std::multimap<int, int> c12;
+	std::unordered_map<int, int> c13;
+	std::unordered_multimap<int, int> c14;
+
+	lc[a | a <- c1];
+	lc[a | a <- c2];
+	lc[a | a <- c3];
+	lc[a | a <- c4];
+	lc[a | a <- c7];
+	lc[a | a <- c8];
+	lc[a | a <- c9];
+	lc[a | a <- c10];
+	lc[a | (a, y) <- c11];
+	lc[a | (a, y) <- c12];
+	lc[a | (a, y) <- c13];
+	lc[a | (a, y) <- c14];
+
+	lc[a | a <- std::vector<int>{}];
+	lc[a | a <- std::list<int>{}];
+	lc[a | a <- std::deque<int>{}];
+	lc[a | a <- range<int>(0, 10)];
+	lc[a | a <- std::set<int>{}];
+	lc[a | a <- std::multiset<int>{}];
+	lc[a | a <- std::unordered_set<int>{}];
+	lc[a | a <- std::unordered_multiset<int>{}];
+	lc[a | (a, y) <- std::map<int, int>{}];
+	lc[a | (a, y) <- std::multimap<int, int>{}];
+	lc[a | (a, y) <- std::unordered_map<int, int>{}];
+	lc[a | (a, y) < -std::unordered_multimap<int, int>{}];
+
+	lc[a | (x, a) <- (c1, std::vector<int>{})];
+	lc[a | (x, a) <- (c1, std::list<int>{})];
+	lc[a | (x, a) <- (c1, std::deque<int>{})];
+	lc[a | (x, a) <- (c1, range<int>(0, 10))];
+	lc[a | (x, a) <- (c1, std::set<int>{})];
+	lc[a | (x, a) <- (c1, std::multiset<int>{})];
+	lc[a | (x, a) <- (c1, std::unordered_set<int>{})];
+	lc[a | (x, a) <- (c1, std::unordered_multiset<int>{})];
+	lc[a | (x, (a, y)) <- (c1, std::map<int, int>{})];
+	lc[a | (x, (a, y)) <- (c1, std::multimap<int, int>{})];
+	lc[a | (x, (a, y)) <- (c1, std::unordered_map<int, int>{})];
+	lc[a | (x, (a, y)) <- (c1, std::unordered_multimap<int, int>{})];
+
+	c1, c2, c3;
+	c1, (c2, c3);
+	(c1, c1), (c2, c3);	
+	"aa", c1, c3;
+	c1, (c2, "aefae");
+	"aefa", (c2, c3);
+	std::vector<int>{}, std::vector<int>{}, std::vector<int>{};
+	std::vector<int>{}, (std::vector<int>{}, std::vector<int>{});
+	(std::vector<int>{}, std::vector<int>{}), (std::vector<int>{}, std::vector<int>{});
+	c1, std::vector<int>{}, std::vector<int>{};
+	std::vector<int>{}, (std::vector<int>{}, c1);
+	c1, (std::vector<int>{}, c1);
+
+	var<std::string> str;
+	expr<std::string&> aef = str.append("135135");
+	std::string& val = aef.run_expression();
+	expr<int> caefa = max(x, y);
+}
 
 int main() {
-	std::incrementable_traits<range<int>::iterator>::difference_type;
-	var<int> a, b, c;
-	auto r1 = lc[(a, b, c) | c <- range(1, 11), b <- range(1, c), a <- range(1, b), a*a + b*b == c*c];
 
+	container_types();
+	all_operators();
 	lifetime();
 	constructibility();
 	containers();
