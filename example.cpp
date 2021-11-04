@@ -6,7 +6,6 @@ using namespace kaixo::lc_operators;
 
 int main()
 {
-    test();
     // Normal list comprehension stuff with multiple ranges, some constraints, and the output. 
     // In this case the output is a tuple of 3 ints. This will create a std::vector<std::tuple<int, int, int>> 
     // with all the tuples from the cartesian product that satisfy the constraint. And, as you can see, 
