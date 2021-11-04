@@ -22,18 +22,48 @@ namespace kaixo {
     // Utils
     template<class Type>
     using container_for = std::conditional_t<std::is_same_v<Type, char>, std::string, std::vector<Type>>;
+
     template<class Type, class ...Tys>
-    concept has_emplace_back = requires(Type t, Tys...tys) { t.emplace_back(tys...); };
+    concept has_emplace_back = requires(Type t, Tys...tys) { 
+        t.emplace_back(tys...); 
+    };
+
     template<class Type, class ...Tys>
-    concept has_try_emplace = requires(Type t, Tys...tys) { t.try_emplace(tys...); };
+    concept has_try_emplace = requires(Type t, Tys...tys) {
+        t.try_emplace(tys...); 
+    };
+
     template<class Type>
-    concept has_begin_end = requires(Type a) { a.begin(), a.end(), a.size(); };
+    concept has_begin_end = requires(Type a) {
+        a.begin();
+        a.end();
+        a.size();
+    };
+
     template<class Type>
-    concept has_clear = requires(Type a) { a.clear(); };
+    concept has_clear = requires(Type a) { 
+        a.clear(); 
+    };
+
     template<class> struct return_type;
-    template<class R, class...T> struct return_type<R(T...)> { using type = R; };
+    template<class R, class...T> struct return_type<R(T...)> { 
+        using type = R; 
+    };
+
     template<class> struct to_refs;
-    template<class ...Args> struct to_refs<std::tuple<Args...>> { using type = std::tuple<Args&...>; };
+    template<class ...Args> struct to_refs<std::tuple<Args...>> { 
+        using type = std::tuple<Args&...>; 
+    };
+
+    template<class Ty>
+    struct to_val_or_ref { 
+        using type = Ty; 
+    };
+
+    template<class Ty>
+    struct to_val_or_ref<const Ty&> { 
+        using type = Ty; 
+    };
 
     /*
      * Expression storage, basically type erased lambda storage 
@@ -68,12 +98,14 @@ namespace kaixo {
         expr_storage(T t) : storage(new lambda_expr_storage<Ty, decltype(t)>{ t }) {}
 
         expr_storage& operator=(expr_storage&& other) {
+            clean();
             storage = other.storage;
             other.storage = nullptr;
             return *this;
         }
 
         expr_storage& operator=(const expr_storage& other) {
+            clean();
             storage = other.storage;
             storage->refs++;
             return *this;
@@ -99,14 +131,18 @@ namespace kaixo {
      * Also works as a shared pointer, makes sure the contained value stays
      * alive as long as any list comprehension object uses this variable.
      */
-    template<class Ty>
+    template<class Ty> requires (!std::is_reference_v<Ty>)
     struct var_storage_base {
         enum _state { n, v, r } state = n;
         
         var_storage_base() : ref(nullptr), state(n) {}
+        var_storage_base(var_storage_base&&) = delete;
+        var_storage_base(const var_storage_base&) = delete;
+
         var_storage_base(Ty& val) : ref(&val), state(r) {}
         var_storage_base(Ty&& val) : value(std::move(val)), state(v) {}
         var_storage_base(const Ty& val) : value(val), state(v) {}
+
         ~var_storage_base() { clean(); }
 
         inline void operator=(Ty& val) {
@@ -116,7 +152,7 @@ namespace kaixo {
             state = r; 
         }
 
-        template<class T>
+        template<class T> requires std::constructible_from<Ty, T>
         inline void operator=(T&& val) { 
             if constexpr (!std::is_trivially_destructible_v<Ty>)
                 clean();
@@ -145,23 +181,25 @@ namespace kaixo {
         };
     };
 
-    template<class Ty>
+    template<class Ty> requires (!std::is_reference_v<Ty>)
     struct var_storage {
-        using value_type = std::decay_t<Ty>;
+        using value_type = Ty;
 
-        var_storage() : storage(new var_storage_base<Ty>{ }) {}
+        var_storage() : storage(new var_storage_base<Ty>{}) {}
         var_storage(var_storage&& other) : storage(other.storage) { other.storage = nullptr; }
         var_storage(const var_storage& other) : storage(other.storage) { storage->refs++; }
+
         ~var_storage() { clean(); }
 
+        var_storage(value_type& t) : storage(new var_storage_base<Ty>{ t }) {}
         var_storage(value_type&& t) : storage(new var_storage_base<Ty>{ std::move(t) }) {}
         var_storage(const value_type& t) : storage(new var_storage_base<Ty>{ t }) {}       
 
-        var_storage& operator=(var_storage& other) { storage = other.storage, storage->refs++; return *this; }
-        var_storage& operator=(var_storage&& other) { storage = other.storage, other.storage = nullptr; return *this; }
-        var_storage& operator=(const var_storage& other) { storage = other.storage, storage->refs++; return *this; }
+        var_storage& operator=(var_storage& other) { clean(), storage = other.storage, storage->refs++; return *this; }
+        var_storage& operator=(var_storage&& other) { clean(), storage = other.storage, other.storage = nullptr; return *this; }
+        var_storage& operator=(const var_storage& other) { clean(), storage = other.storage, storage->refs++; return *this; }
 
-        template<class Arg>
+        template<class Arg> requires std::constructible_from<Ty, Arg>
         inline var_storage& operator=(Arg&& arg) { *storage = std::forward<Arg>(arg); return *this; };
 
         inline void clean() { 
@@ -177,10 +215,8 @@ namespace kaixo {
      * the result, either variable or from expression stored in a lambda.
      */
     struct is_an_expr {};
-    template<class Ty, class Storage = expr_storage<Ty>>
-    struct expr;
-    template<class Ty> requires (!std::is_reference_v<Ty>)
-    struct var;
+    template<class Ty, class Storage = expr_storage<Ty>> struct expr;
+    template<class Ty> requires (!std::is_reference_v<Ty>) struct var;
     template<class Ty, class Storage = expr_storage<Ty>>
     struct expr_base : is_an_expr {
         using type = Ty;
@@ -206,8 +242,16 @@ namespace kaixo {
             return *this;
         }
 
+        /**
+         * Evaluate the expression
+         * @return result
+         */
         inline Ty run_expression() const { return storage.storage->get(); }
 
+        /**
+         * Cast to type.
+         * @return expr of new type
+         */
         template<class Ty> inline expr<Ty> to() {
             return expr<Ty>{ [e = *this] () -> Ty { return static_cast<Ty>(e.run_expression()); } };
         }
@@ -248,17 +292,30 @@ namespace kaixo {
             return *this;
         }
 
+        /**
+         * Assignment operator for creating a name alias for the result of a 
+         * list comprehension object.
+         */
         template<class ContainerSyntax, class ...LinkedContainers> requires std::same_as<typename ContainerSyntax::container, Ty>
-        list_comprehension<ContainerSyntax, LinkedContainers...> operator=(list_comprehension<ContainerSyntax, LinkedContainers...>&& l) {
+        auto operator=(list_comprehension<ContainerSyntax, LinkedContainers...>&& l) {
             l.name_alias.storage = this->storage;
             return std::move(l);
         }
 
-        var_alias<Ty> operator<<=(expr<Ty> e) {
+        /**
+         * Operator for creating intermediate variable assignments in a list
+         * comprehension object.
+         * @return the variable alias object that connects the given expression to this variable
+         */
+        var_alias<Ty> operator<<=(expr<Ty> e) const {
             return { e, *this };
         }
     };
 
+    /**
+     * Variable alias object that is used for intermediate variable assignments
+     * in a list comprehension object.
+     */
     template<class Ty>
     struct var_alias {
         expr<Ty> e;
@@ -283,9 +340,9 @@ namespace kaixo {
         using type = Type;
         Container container;
 
-        auto begin() { return container.begin(); }
-        auto end() { return container.end(); }
-        auto size() const { return container.size(); }
+        inline auto begin() { return container.begin(); }
+        inline auto end() { return container.end(); }
+        inline auto size() const { return container.size(); }
     };
 
     /**
@@ -295,10 +352,12 @@ namespace kaixo {
     template<class Type, has_begin_end Container>
     struct linked_container {
         using type = typename Type::type;
+        using iterator = decltype(std::declval<Container>().begin());
+
         constexpr static bool has_var = false;
+
         Type variable;
         Container container;
-        using iterator = decltype(container.begin());
 
         iterator begin() { return container.begin(); }
         iterator end() { return container.end(); }
@@ -307,15 +366,17 @@ namespace kaixo {
 
     /**
      * Specialization for storing a variable that results in a container.
-     * So we can get the actual result of the variable by calling the operator()
+     * So we can get the actual result of the variable by calling run_expression()
      */
     template<class Type, has_begin_end VarType>
     struct linked_container<Type, container<typename VarType::value_type, var<VarType>>> {
         using type = typename Type::type;
+        using iterator = decltype(std::declval<VarType>().begin());
+
         constexpr static bool has_var = true;
+
         Type variable;
         container<typename VarType::value_type, var<VarType>> container;
-        using iterator = decltype(container.container.run_expression().begin());
 
         iterator begin() { return container.container.run_expression().begin(); }
         iterator end() { return container.container.run_expression().end(); }
@@ -330,11 +391,17 @@ namespace kaixo {
     template<class Container, class ...Types>
     struct container_syntax {
         using container = Container;
+
         std::tuple<expr<Types>...> expressions;
 
+        /**
+         * Generate the next entry directly into the given container
+         * @param container container to generate entry into.
+         */
         template<class T>
         inline void generate(T& container) { return m_Gen(container, std::make_index_sequence<sizeof...(Types)>{}); }
 
+    private:
         template<class T, size_t ...Is>
         inline void m_Gen(T& container, std::index_sequence<Is...>) {
             if constexpr (std::same_as<std::string, T>)
@@ -372,12 +439,17 @@ namespace kaixo {
         VarAliases aliases;
         var<container> name_alias;
 
-        container operator*() { return m_Get(0); }
         container get() { return this->m_Get(0); }
         container take(std::size_t n) { return this->m_Get(n); }
 
         expr<container> get_as_expr() { return expr{ [cpy = std::move(*this)] () mutable { return cpy.m_Get(0); } }; }
-
+        
+        /**
+         * Checks if it generates at most n elements, immediately stops 
+         * and returns false if it exceeds n.
+         * @param n
+         * @return expression that evaluates to true if size is below n
+         */
         expr<bool> max_size(size_t n) { return expr{ [n, cpy = std::move(*this)] () mutable -> bool { return cpy.m_Get(n + 1).size() == n; } }; }
 
     private:
@@ -406,8 +478,10 @@ namespace kaixo {
                 set_values(its, sequence); // Set all vars to the values that the iterators point to.
                 set_end(ends, sequence);
 
+                // Assign variable aliases before checking constraints/breakpoints
                 set_aliases(aliases, alias_sequence);
 
+                // Check for breakpoint expressions
                 bool _break = false;
                 for (auto& b : breakpoints)
                     if (b.run_expression()) {
@@ -418,8 +492,9 @@ namespace kaixo {
                 if (_break)
                     break;
 
+                // Check if all constraints match.
                 bool _match = true;
-                for (auto& c : constraints) // Check all constraints.
+                for (auto& c : constraints) 
                     if (!c.run_expression()) {
                         _match = false;
                         break;
@@ -430,6 +505,7 @@ namespace kaixo {
                     if (n && result.size() == n)
                         break;
                 }
+
                 if (!check_end(its, ends, index, sequence))
                     increment(its, index, sequence); // Increment the iterator
                 while (check_end(its, ends, index, sequence)) { // And check if it's now at the end.
@@ -846,19 +922,25 @@ namespace kaixo {
          * links that container to a variable.
          */
         template<has_begin_end Container>
-        auto operator-(Container& r) -> container<typename Container::value_type, Container&> { return { r }; }
+        container<typename Container::value_type, Container&> operator-(Container& r) { return { r }; }
 
         template<has_begin_end Container>
-        auto operator-(Container&& r) -> container<typename Container::value_type, Container> { return { std::move(r) }; }
+        container<typename Container::value_type, Container> operator-(Container&& r) { return { std::move(r) }; }
 
         template<has_begin_end Type>
-        auto operator-(var<Type> r) -> container<typename Type::value_type, var<Type>> { return { r }; }
+        container<typename Type::value_type, var<Type>> operator-(var<Type> r) { return { r }; }
 
         template<class Type, class CType, class Container>
-        auto operator<(var<Type> v, container<CType, Container>&& r) -> linked_container<var<Type>, container<CType, Container>> { return { v, std::move(r) }; }
+        linked_container<var<Type>, container<CType, Container>> 
+            operator<(var<Type> v, container<CType, Container>&& r) { 
+            return { v, std::move(r) }; 
+        }
 
         template<class CType, class Container, class ...Args>
-        auto operator<(tuple_of_vars<Args...>&& v, container<CType, Container>&& r) -> linked_container<tuple_of_vars<Args...>, container<CType, Container>> { return { v, std::move(r) }; }
+        linked_container<tuple_of_vars<Args...>, container<CType, Container>> 
+            operator<(tuple_of_vars<Args...>&& v, container<CType, Container>&& r) { 
+            return { v, std::move(r) }; 
+        }
 
         /**
          * Operators and functions for constructing a container syntax.
@@ -875,17 +957,20 @@ namespace kaixo {
         container_syntax<std::vector<std::tuple<A, B>>, A, B> operator,(expr<A> a, expr<B> b) { return { { a, b } }; }
 
         template<class A, class ...Rest>
-        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest&..., A> operator,(tuple_of_vars<Rest...>&& a, expr<A> b) {
+        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest&..., A> 
+            operator,(tuple_of_vars<Rest...>&& a, expr<A> b) {
             return { std::tuple_cat(a.vars, std::tuple{ b }) };
         }
 
         template<class A, class ...Rest>
-        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest..., A> operator,(container_syntax<std::vector<std::tuple<Rest...>>, Rest...>&& a, var<A> b) {
+        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest..., A> 
+            operator,(container_syntax<std::vector<std::tuple<Rest...>>, Rest...>&& a, var<A> b) {
             return { std::tuple_cat(a.expressions, std::tuple{ b }) };
         }
 
         template<class A, class ...Rest>
-        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest..., A> operator,(container_syntax<std::vector<std::tuple<Rest...>>, Rest...>&& a, expr<A> b) {
+        container_syntax<std::vector<std::tuple<Rest..., A>>, Rest..., A> 
+            operator,(container_syntax<std::vector<std::tuple<Rest...>>, Rest...>&& a, expr<A> b) {
             return { std::tuple_cat(a.expressions, std::tuple{ b }) };
         }
 
@@ -1008,7 +1093,8 @@ namespace kaixo {
         template<class ContainerSyntax, class VarAliasses, class Container, class CType, class ...LinkedContainers>
         list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers..., linked_container<CType, Container>>
             operator,(list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>&& v, linked_container<CType, Container>&& c) {
-            return { std::move(v.syntax), std::tuple_cat(std::move(v.containers), std::tuple{ c }), std::move(v.constraints), std::move(v.breakpoints), std::move(v.aliases), std::move(v.name_alias) };
+            return { std::move(v.syntax), std::tuple_cat(std::move(v.containers), std::tuple{ c }), 
+                std::move(v.constraints), std::move(v.breakpoints), std::move(v.aliases), std::move(v.name_alias) };
         }
 
         template<class ContainerSyntax, class VarAliasses, class ...LinkedContainers>
@@ -1050,7 +1136,8 @@ namespace kaixo {
         template<class Ty, class ContainerSyntax, class VarAliasses, class ...LinkedContainers>
         list_comprehension<ContainerSyntax, decltype(std::tuple_cat(std::declval<VarAliasses>(), std::declval<std::tuple<var_alias<Ty>>>())), LinkedContainers...>
             operator,(list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>&& v, var_alias<Ty> b) {
-            return { std::move(v.syntax), std::move(v.containers), std::move(v.constraints), std::move(v.breakpoints), std::tuple_cat(v.aliases, std::tuple{ b }), v.name_alias };
+            return { std::move(v.syntax), std::move(v.containers), std::move(v.constraints), 
+                std::move(v.breakpoints), std::tuple_cat(v.aliases, std::tuple{ b }), v.name_alias };
         }
 
         /**
@@ -1125,7 +1212,8 @@ namespace kaixo {
      */
 #define lc_mem_fun(y, x) \
     template<class ...Args> auto x(Args&& ...exprs) const { return kaixo::expr{ [s = *this, ...args = expr_wrapper<Args>{ \
-        std::forward<Args>(exprs) }]() mutable -> decltype(std::declval<y>().x(std::declval<expr_wrapper<Args>>().get()...)) { return s.run_expression().y::x(args.get()...); } }; } \
+        std::forward<Args>(exprs) }]() mutable -> decltype(std::declval<y>().x(std::declval<expr_wrapper<Args>>().get()...)) { \
+            return s.run_expression().y::x(args.get()...); } }; } \
 
     template<class String, class Storage = expr_storage<String>>
     struct string_expression : expr_base<String, Storage> {
@@ -1445,9 +1533,12 @@ namespace kaixo {
 
 #define COMMA ,
 #define make_expr(cls, e, ...) \
-    template<__VA_ARGS__ class Storage> struct expr<cls, Storage> : e<cls, Storage> { using type = cls; using value_type = cls; using e<cls, Storage>::e; }; \
-    template<__VA_ARGS__ class Storage> struct expr<cls&, Storage> : e<cls&, Storage> { using type = cls&; using value_type = cls; using e<cls&, Storage>::e; }; \
-    template<__VA_ARGS__ class Storage> struct expr<const cls&, Storage> : e<const cls&, Storage> { using type = const cls&; using value_type = const cls; using e<const cls&, Storage>::e; }; \
+    template<__VA_ARGS__ class Storage> struct expr<cls, Storage> : e<cls, Storage> { \
+        using type = cls; using value_type = cls; using e<cls, Storage>::e; }; \
+    template<__VA_ARGS__ class Storage> struct expr<cls&, Storage> : e<cls&, Storage> { \
+        using type = cls&; using value_type = cls; using e<cls&, Storage>::e; }; \
+    template<__VA_ARGS__ class Storage> struct expr<const cls&, Storage> : e<const cls&, Storage> { \
+        using type = const cls&; using value_type = const cls; using e<const cls&, Storage>::e; }; \
 
     make_expr(std::string, string_expression);
     make_expr(std::tuple<Args...>, tuple_expression, class ...Args, );
@@ -1462,11 +1553,6 @@ namespace kaixo {
     make_expr(kaixo::range<Arg>, range_expression, class Arg, );
 #undef COMMA
 #undef make_expr
-
-    template<class Ty>
-    struct to_val_or_ref { using type = Ty; };
-    template<class Ty>
-    struct to_val_or_ref<const Ty&> { using type = Ty; };
 }
 
 /**
@@ -1475,8 +1561,10 @@ namespace kaixo {
  */
 
 #define lc_std_fun(y, x) \
-    template<class ...Args> kaixo::expr<typename to_val_or_ref<decltype(y x(std::declval<expr_wrapper<Args>>().get()...))>::type> x(Args&& ...exprs) { return kaixo::expr{ \
-        [...args = expr_wrapper<Args>{ std::forward<Args>(exprs) }]() mutable -> typename to_val_or_ref<decltype(y x(std::declval<expr_wrapper<Args>>().get()...))>::type { return y x(args.get()...); } }; } \
+    template<class ...Args> \
+    kaixo::expr<typename to_val_or_ref<decltype(y x(std::declval<expr_wrapper<Args>>().get()...))>::type> \
+        x(Args&& ...exprs) { return kaixo::expr{ [...args = expr_wrapper<Args>{ std::forward<Args>(exprs) }]() mutable -> \
+        typename to_val_or_ref<decltype(y x(std::declval<expr_wrapper<Args>>().get()...))>::type { return y x(args.get()...); } }; } \
 
 #ifndef KAIXO_LC_FUNCTIONAL
 #define KAIXO_LC_FUNCTIONAL 1
