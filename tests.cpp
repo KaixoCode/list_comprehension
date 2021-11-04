@@ -57,8 +57,6 @@ void containers() {
 	tuple_of_containers<std::vector<int>, std::map<int, int>> a{ { std::vector{ 1, 3, 4 }, std::map<int, int>{ { 1, 2 }, { 2, 3 } } } };
 	tuple_of_containers<std::vector<int>, std::map<int, int>> b;
 
-	tuple_of_containers<std::vector<int>, std::map<int, int>>::iterator::value_type;
-
 	auto r = std::distance(a.begin(), a.end());
 	assert(r == 2);
 	std::swap(a, b);
@@ -323,7 +321,6 @@ void test() {
 
 int main() {
 	test();
-	return 0;
 	container_types();
 	all_operators();
 	lifetime();
