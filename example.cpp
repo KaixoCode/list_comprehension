@@ -74,9 +74,9 @@ int main()
     // Combining this with the breaking conditions we have a prime generator that only checks prime 
     // factors up to the sqrt of the number, and using the `max_size` of the lazy evaluation list,
     // it will stop generating factors once it exceeds the given limit of 0.
-    xs.run_expression().reserve(100000); // Reserve to prevent reallocation.
+    xs.run_expression().reserve(1000000); // Reserve to prevent reallocation.
     auto primegenerator = lcl[xs = x | x <- range(2, inf), lcl[a | a <- xs, x % a == 0, brk <<= a > sqrt(x)].max_size(0)];
-    auto r15 = primegenerator.take(100000).back(); // Get the millionth prime!
+    auto r15 = primegenerator.take(1000000).back(); // Get the millionth prime!
 
     // Variable assignments.You can have intermediate expressions to use in the rest of the list comprehension!
     auto r16 = lc[a | b <- range(0, 10), a <<= b * 2];
