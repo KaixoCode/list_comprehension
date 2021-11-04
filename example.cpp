@@ -103,4 +103,7 @@ int main()
     xs.run_expression().reserve(100000); // Reserve to prevent reallocation.
     auto primegenerator = lcl[xs = x | x <- range(2, inf), lcl[a | a <- xs, x % a == 0, brk <<= a > sqrt(x)].max_size(0)];
     auto r15 = primegenerator.take(100000).back(); // Get the millionth prime!
+
+    // Variable assignments.You can have intermediate expressions to use in the rest of the list comprehension!
+    auto r16 = lc[a | b <- range(0, 10), a <<= b * 2];
 }
