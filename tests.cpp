@@ -311,12 +311,33 @@ void all_operators() {
 void test() {
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
-	var<int> i, a, b = 1, c;
-	auto fib_gen = lcl[a | i <- range(0, inf), c <<= a + b, a <<= b, b <<= c];
-	auto fibs = fib_gen.take(100);
+	var<size_t> n, i, x, j;
+
+	auto collatz = [](auto x) { 
+		return (x % 2 == 0) * (x / 2) + (x % 2 == 1) * (3 * x + 1); 
+	};
+
+	auto res = 
+		lcl[x | 
+			i <- range(1ull, inf), 
+			n <<= i, 
+			x <<= lcv[n | 
+				j <- range(0ull, inf), 
+				n <<= collatz(n), 
+				brk <<= n == 1
+			].size() + 2];
+	
+	auto t = res.take(1'000'000);
+
+	auto max = std::max_element(t.begin(), t.end());
+	auto index = std::distance(t.begin(), max);
+
 
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
+
+	std::cout << *max << std::endl;
+	std::cout << index << std::endl;
 }
 
 int main() {
