@@ -461,7 +461,7 @@ namespace kaixo {
             if constexpr (has_clear<container>) result.clear();
             else result = {};
 
-            bool needs_reset[sizeof...(LinkedContainers)];
+            bool needs_reset[sizeof...(LinkedContainers)]{};
             std::fill(std::begin(needs_reset), std::end(needs_reset), false);
 
             // Check whether container has any content 
