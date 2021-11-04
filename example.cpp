@@ -1,33 +1,8 @@
 #include "list_comprehension.hpp"
 #include <iostream>
+
 using namespace kaixo;
 using namespace kaixo::lc_operators;
-
-
-void test() {
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-
-
-    auto triangle = [](auto v) { 
-        var r = range(0ll, v + 1);
-        return kaixo::accumulate(r.begin(), r.end(), 0ll); 
-    };
-
-    auto factors = [x = var<int64_t>{}](auto v) {
-        return lcv[x | x <- range(2ll, sqrt(v).to<int64_t>() + 1), v % x == 0];
-    };
-
-    var<int64_t> x, a;
-    var<size_t> b;
-    auto r = lcl[(x, a, b) | x <- range(1ll, inf), a <<= a + x, b <<= factors(a).size() + 2, b > 500];
-    auto res = r.take(1);
-
-
-
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
-}
-
 
 int main()
 {
