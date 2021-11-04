@@ -1,4 +1,5 @@
 #include "list_comprehension.hpp"
+#include <iostream>
 using namespace kaixo;
 using namespace kaixo::lc_operators;
 
@@ -61,4 +62,20 @@ int main()
     // Lazy evaluation! You can create an infinite list and only generate the first n values.
     auto lazylist = lcl[a | a <- range(0, inf)];
     auto r13 = lazylist.take(30);
+
+    // Breaking conditions. You can add a breaking condition to a list comprehension, 
+    // and it will stop generating results as soon as the condition evaluates to true. So 
+    // this means the example down below will only generate values until `x` reaches 100.
+    auto r14 = lc[x | x <- range(0, inf), brk <<= x == 100];
+
+    // Name alias for the current result! This means you can use the current result of a list 
+    // comprehension in a nested list comprehension! This allows for a really fast prime generator.
+    // Combining this with the breaking conditions we have a prime generator that only checks prime 
+    // factors up to the sqrt of the number, and using the `max_size` of the lazy evaluation list,
+    // it will stop generating factors once it exceeds the given limit of 0.
+    xs.run_expression().reserve(1000000); // Reserve to prevent reallocation.
+    auto primegenerator = lcl[xs = x | x <- range(2, inf), lcl[a | a <- xs, x % a == 0, brk <<= a > sqrt(x)].max_size(0)];
+    auto r15 = primegenerator.take(1000000).back(); // Get the millionth prime!
+
+    std::cout << "";
 }

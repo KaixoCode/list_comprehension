@@ -155,6 +155,7 @@ namespace kaixo {
         var_storage(value_type&& t) : storage(new var_storage_base<Ty>{ std::move(t) }) {}
         var_storage(const value_type& t) : storage(new var_storage_base<Ty>{ t }) {}       
 
+        var_storage& operator=(var_storage& other) { storage = other.storage, storage->refs++; return *this; }
         var_storage& operator=(var_storage&& other) { storage = other.storage, other.storage = nullptr; return *this; }
         var_storage& operator=(const var_storage& other) { storage = other.storage, storage->refs++; return *this; }
 
@@ -220,6 +221,9 @@ namespace kaixo {
         using expr_base<Ty, Storage>::operator=;
     };
 
+    template<class ContainerSyntax, class ...LinkedContainers>
+    struct list_comprehension;
+
     template<class Ty> requires (!std::is_reference_v<Ty>)
     struct var : expr<Ty&, var_storage<Ty>> {
         using type = Ty&;
@@ -230,12 +234,19 @@ namespace kaixo {
         var(const var& other) { this->storage = other.storage; }
 
         var& operator=(var&& other) { this->storage = std::move(other.storage); return *this; }
+        var& operator=(var& other) { this->storage = other.storage; return *this; }
         var& operator=(const var& other) { this->storage = other.storage; return *this; }
 
         template<class Args>
         var& operator=(Args&& args) {
             this->storage = std::forward<Args>(args);
             return *this;
+        }
+
+        template<class ContainerSyntax, class ...LinkedContainers> requires std::same_as<typename ContainerSyntax::container, Ty>
+        list_comprehension<ContainerSyntax, LinkedContainers...> operator=(list_comprehension<ContainerSyntax, LinkedContainers...>&& l) {
+            l.name_alias.storage = this->storage;
+            return std::move(l);
         }
     };
 
@@ -289,11 +300,11 @@ namespace kaixo {
         constexpr static bool has_var = true;
         Type variable;
         container<typename VarType::value_type, var<VarType>> container;
-        using iterator = decltype(container.begin().run_expression());
+        using iterator = decltype(container.container.run_expression().begin());
 
-        iterator begin() { return container.begin().run_expression(); }
-        iterator end() { return container.end().run_expression(); }
-        size_t size() const { return container.size().run_expression(); }
+        iterator begin() { return container.container.run_expression().begin(); }
+        iterator end() { return container.container.run_expression().end(); }
+        size_t size() const { return container.container.run_expression().size(); }
     };
 
     /**
@@ -340,6 +351,9 @@ namespace kaixo {
         ContainerSyntax syntax;
         std::tuple<LinkedContainers...> containers;
         std::vector<expr<bool>> constraints;
+        std::vector<expr<bool>> breakpoints;
+
+        var<container> name_alias;
 
         container operator*() { return m_Get(0); }
         container get() { return this->m_Get(0); }
@@ -347,9 +361,12 @@ namespace kaixo {
 
         expr<container> get_as_expr() { return expr{ [cpy = std::move(*this)] () mutable { return cpy.m_Get(0); } }; }
 
+        expr<bool> max_size(size_t n) { return expr{ [n, cpy = std::move(*this)] () mutable -> bool { return cpy.m_Get(n + 1).size() == n; } }; }
+
     private:
         inline container m_Get(std::size_t n) {
-            container result;
+            container& result = name_alias.run_expression();
+            result.clear();
 
             bool needs_reset[sizeof...(LinkedContainers)];
             std::fill(std::begin(needs_reset), std::end(needs_reset), false);
@@ -366,9 +383,22 @@ namespace kaixo {
             while (!done) { // This will loop through all the values in the cartesian product of the linked containers.
                 set_values(its, sequence); // Set all vars to the values that the iterators point to.
 
+                bool _break = false;
+                for (auto& b : breakpoints)
+                    if (b.run_expression()) {
+                        _break = true;
+                        break;
+                    }
+
+                if (_break)
+                    break;
+
                 bool _match = true;
                 for (auto& c : constraints) // Check all constraints.
-                    _match &= c.run_expression();
+                    if (!c.run_expression()) {
+                        _match = false;
+                        break;
+                    }
 
                 if (_match) { // If all matched, generate an entry, and add to result.
                     syntax.generate(result);
@@ -704,7 +734,7 @@ namespace kaixo {
         void init(expr<Type>& a, var<Type> t) { a = expr{ [t]() { return t.run_expression(); } }; }
         void init(expr<Type>& a, expr<Type> t) { a = t; }
         void init(expr<Type>& a, Type&& t) { a = expr{ [t = std::move(t)] () { return t; } }; }
-        void init(expr<Type>& a, const Type& t) { a = [t = t]() { return t; }; }
+        void init(expr<Type>& a, const Type& t) { a = expr{ [t = t]() { return t; } }; }
     };
 
     template<class Type, std::convertible_to<Type> T2>
@@ -956,14 +986,32 @@ namespace kaixo {
         list_comprehension<ContainerSyntax, LinkedContainers...>
             operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<bool> c) {
             v.constraints.push_back(c);
-            return v;
+            return std::move(v);
         }
 
         template<std::convertible_to<bool> Type, class ContainerSyntax, class ...LinkedContainers>
         list_comprehension<ContainerSyntax, LinkedContainers...>
             operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<Type> c) {
             v.constraints.push_back({ [c = std::move(c)] () { return static_cast<bool>(c.run_expression()); } });
-            return v;
+            return std::move(v);
+        }
+
+        /**
+         * Used in the syntax for a breaking condition
+         */
+        struct breakpoint {
+            expr<bool> condition;
+            breakpoint& operator<<=(expr<bool> e) {
+                condition = e;
+                return *this;
+            }
+        } brk;
+
+        template<class ContainerSyntax, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, LinkedContainers...>
+            operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, breakpoint& b) {
+            v.breakpoints.push_back(b.condition);
+            return std::move(v);
         }
 
         /**
