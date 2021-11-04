@@ -310,8 +310,34 @@ void all_operators() {
 	expr<int> caefa = max(x, y);
 }
 
-int main() {
+void test() {
+	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
+
+    auto triangle = [](auto v) { 
+        var r = range(0ll, v + 1);
+        return kaixo::accumulate(r.begin(), r.end(), 0ll); 
+    };
+
+    auto factors = [x = var<int64_t>{}](auto v) {
+        return lcv[x | x <- range(2ll, v / 2 + 1), v % x == 0];
+    };
+
+    var<int64_t> x, a = 0;
+    var<size_t> b;
+    auto r = lcl[(x, a, b) | x <- range(1ll, inf), a <<= a + x, b <<= factors(a).size() + 2, b > 500];
+    auto res = r.take(1);
+
+	 
+
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
+	std::cout << std::get<0>(res[0]) << ", " << std::get<0>(res[0]) << ", " << std::get<0>(res[0]) << std::endl;
+}
+
+int main() {
+	test();
+	return 0;
 	container_types();
 	all_operators();
 	lifetime();

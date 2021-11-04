@@ -223,8 +223,11 @@ namespace kaixo {
         using expr_base<Ty, Storage>::operator=;
     };
 
-    template<class ContainerSyntax, class ...LinkedContainers>
+    template<class ContainerSyntax, class VarAliases, class ...LinkedContainers>
     struct list_comprehension;
+
+    template<class Ty>
+    struct var_alias;
 
     template<class Ty> requires (!std::is_reference_v<Ty>)
     struct var : expr<Ty&, var_storage<Ty>> {
@@ -250,6 +253,16 @@ namespace kaixo {
             l.name_alias.storage = this->storage;
             return std::move(l);
         }
+
+        var_alias<Ty> operator<<=(expr<Ty> e) {
+            return { e, *this };
+        }
+    };
+
+    template<class Ty>
+    struct var_alias {
+        expr<Ty> e;
+        var<Ty> v;
     };
 
     template<class Type>
@@ -339,7 +352,7 @@ namespace kaixo {
      * Everything combined into a single object, contains the container syntax, all
      * the linked containers, and also some constraints, which are expressions that evaluate to 'bool'
      */
-    template<class ContainerSyntax, class ...LinkedContainers>
+    template<class ContainerSyntax, class VarAliases, class ...LinkedContainers>
     struct list_comprehension {
         using container = typename ContainerSyntax::container;
         using value_type = container::value_type;
@@ -347,14 +360,16 @@ namespace kaixo {
         using size_type = container::size_type;
 
         constexpr static auto container_count = sizeof...(LinkedContainers);
+        constexpr static auto alias_count = std::tuple_size_v<VarAliases>;
         constexpr static auto sequence = std::make_index_sequence<container_count>{};
+        constexpr static auto alias_sequence = std::make_index_sequence<alias_count>{};
         constexpr static bool has_var_as_container = (LinkedContainers::has_var || ...);
         
         ContainerSyntax syntax;
         std::tuple<LinkedContainers...> containers;
         std::vector<expr<bool>> constraints;
         std::vector<expr<bool>> breakpoints;
-
+        VarAliases aliases;
         var<container> name_alias;
 
         container operator*() { return m_Get(0); }
@@ -390,6 +405,8 @@ namespace kaixo {
             while (!done) { // This will loop through all the values in the cartesian product of the linked containers.
                 set_values(its, sequence); // Set all vars to the values that the iterators point to.
                 set_end(ends, sequence);
+
+                set_aliases(aliases, alias_sequence);
 
                 bool _break = false;
                 for (auto& b : breakpoints)
@@ -458,6 +475,11 @@ namespace kaixo {
         template<class T, std::size_t ...Is>
         inline void set_end(T& tuple, std::index_sequence<Is...>) {
             ((void(std::get<Is>(tuple) = std::move(std::get<Is>(containers).end()))), ...);
+        }
+
+        template<class T, std::size_t ...Is>
+        inline void set_aliases(T& tuple, std::index_sequence<Is...>) {
+            ((void(std::get<Is>(tuple).v = std::get<Is>(tuple).e.run_expression())), ...);
         }
 
         template<class T, std::size_t ...Is>
@@ -956,25 +978,25 @@ namespace kaixo {
          * Operators for initializing a list comprehension object with a container syntax and the first linked container.
          */
         template<class ContainerSyntax, class Container, class CType>
-        list_comprehension<ContainerSyntax, linked_container<CType, Container>>
+        list_comprehension<ContainerSyntax, std::tuple<>, linked_container<CType, Container>>
             operator|(const ContainerSyntax& v, linked_container<CType, Container>&& c) {
             return { v, linked_container<CType, Container>{ std::move(c) }, {} };
         }
 
         template<class Type, class Container, class CType>
-        list_comprehension<container_syntax<container_for<std::decay_t<Type>>, Type&>, linked_container<CType, Container>>
+        list_comprehension<container_syntax<container_for<std::decay_t<Type>>, Type&>, std::tuple<>, linked_container<CType, Container>>
             operator|(var<Type> v, linked_container<CType, Container>&& c) {
             return { container_syntax<container_for<std::decay_t<Type>>, Type&>{ v }, std::move(c), {} };
         }
 
         template<class Type, class Container, class CType>
-        list_comprehension<container_syntax<container_for<std::decay_t<Type>>, Type>, linked_container<CType, Container>>
+        list_comprehension<container_syntax<container_for<std::decay_t<Type>>, Type>, std::tuple<>, linked_container<CType, Container>>
             operator|(expr<Type> v, linked_container<CType, Container>&& c) {
             return { container_syntax<container_for<std::decay_t<Type>>, Type>{ v }, std::move(c), {} };
         }
 
         template<class Container, class CType, class...Args>
-        list_comprehension<container_syntax<std::vector<std::tuple<Args...>>, Args&...>, linked_container<CType, Container>>
+        list_comprehension<container_syntax<std::vector<std::tuple<Args...>>, Args&...>, std::tuple<>, linked_container<CType, Container>>
             operator|(tuple_of_vars<Args...>&& v, linked_container<CType, Container>&& c) {
             return { container_syntax<std::vector<std::tuple<Args...>>, Args&...>{ v.vars }, std::move(c), {} };
         }
@@ -983,22 +1005,22 @@ namespace kaixo {
          * Operators for expanding the initial list comprehension with
          * more linked containers or constraints.
          */
-        template<class ContainerSyntax, class Container, class CType, class ...LinkedContainers>
-        list_comprehension<ContainerSyntax, LinkedContainers..., linked_container<CType, Container>>
-            operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, linked_container<CType, Container>&& c) {
-            return { std::move(v.syntax), std::tuple_cat(std::move(v.containers), std::tuple{ c }), std::move(v.constraints) };
+        template<class ContainerSyntax, class VarAliasses, class Container, class CType, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers..., linked_container<CType, Container>>
+            operator,(list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>&& v, linked_container<CType, Container>&& c) {
+            return { std::move(v.syntax), std::tuple_cat(std::move(v.containers), std::tuple{ c }), std::move(v.constraints), std::move(v.breakpoints), std::move(v.aliases), std::move(v.name_alias) };
         }
 
-        template<class ContainerSyntax, class ...LinkedContainers>
-        list_comprehension<ContainerSyntax, LinkedContainers...>
-            operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<bool> c) {
+        template<class ContainerSyntax, class VarAliasses, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>
+            operator,(list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>&& v, expr<bool> c) {
             v.constraints.push_back(c);
             return std::move(v);
         }
 
-        template<std::convertible_to<bool> Type, class ContainerSyntax, class ...LinkedContainers>
-        list_comprehension<ContainerSyntax, LinkedContainers...>
-            operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, expr<Type> c) {
+        template<std::convertible_to<bool> Type, class ContainerSyntax, class VarAliasses, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>
+            operator,(list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>&& v, expr<Type> c) {
             v.constraints.push_back({ [c = std::move(c)] () { return static_cast<bool>(c.run_expression()); } });
             return std::move(v);
         }
@@ -1014,11 +1036,21 @@ namespace kaixo {
             }
         } brk;
 
-        template<class ContainerSyntax, class ...LinkedContainers>
-        list_comprehension<ContainerSyntax, LinkedContainers...>
-            operator,(list_comprehension<ContainerSyntax, LinkedContainers...>&& v, breakpoint& b) {
+        template<class ContainerSyntax, class VarAliasses, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>
+            operator,(list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>&& v, breakpoint& b) {
             v.breakpoints.push_back(b.condition);
             return std::move(v);
+        }
+
+        /**
+         * Operators for var aliasses
+         */
+
+        template<class Ty, class ContainerSyntax, class VarAliasses, class ...LinkedContainers>
+        list_comprehension<ContainerSyntax, decltype(std::tuple_cat(std::declval<VarAliasses>(), std::declval<std::tuple<var_alias<Ty>>>())), LinkedContainers...>
+            operator,(list_comprehension<ContainerSyntax, VarAliasses, LinkedContainers...>&& v, var_alias<Ty> b) {
+            return { std::move(v.syntax), std::move(v.containers), std::move(v.constraints), std::move(v.breakpoints), std::tuple_cat(v.aliases, std::tuple{ b }), v.name_alias };
         }
 
         /**
@@ -1401,6 +1433,16 @@ namespace kaixo {
         lc_mem_fun(type, target);
     };
 
+    template<class Range, class Storage = expr_storage<Range>>
+    struct range_expression : expr_base<Range, Storage> {
+        using type = std::decay_t<Range>;
+        using expr_base<Range, Storage>::expr_base;
+        using expr_base<Range, Storage>::operator=;
+
+        lc_mem_fun(type, begin);
+        lc_mem_fun(type, end);
+    };
+
 #define COMMA ,
 #define make_expr(cls, e, ...) \
     template<__VA_ARGS__ class Storage> struct expr<cls, Storage> : e<cls, Storage> { using type = cls; using value_type = cls; using e<cls, Storage>::e; }; \
@@ -1417,6 +1459,7 @@ namespace kaixo {
     make_expr(std::any, any_expression, );
     make_expr(std::bitset<N>, bitset_expression, size_t N, );
     make_expr(std::function<Args...>, function_expression, class ...Args, );
+    make_expr(kaixo::range<Arg>, range_expression, class Arg, );
 #undef COMMA
 #undef make_expr
 
