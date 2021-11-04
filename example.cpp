@@ -73,9 +73,12 @@ int main()
     // Combining this with the breaking conditions we have a prime generator that only checks prime 
     // factors up to the sqrt of the number, and using the `max_size` of the lazy evaluation list,
     // it will stop generating factors once it exceeds the given limit of 0.
-    xs.run_expression().reserve(1000000); // Reserve to prevent reallocation.
+    std::chrono::high_resolution_clock::time_point begin = std::chrono::high_resolution_clock::now();
+    xs.run_expression().reserve(10000000); // Reserve to prevent reallocation.
     auto primegenerator = lcl[xs = x | x <- range(2, inf), lcl[a | a <- xs, x % a == 0, brk <<= a > sqrt(x)].max_size(0)];
-    auto r15 = primegenerator.take(1000000).back(); // Get the millionth prime!
+    auto r15 = primegenerator.take(10000000).back(); // Get the millionth prime!
+    std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
 
-    std::cout << "";
+    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
+    std::cout <<r15;
 }

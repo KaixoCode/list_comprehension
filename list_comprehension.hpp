@@ -28,6 +28,8 @@ namespace kaixo {
     concept has_try_emplace = requires(Type t, Tys...tys) { t.try_emplace(tys...); };
     template<class Type>
     concept has_begin_end = requires(Type a) { a.begin(), a.end(), a.size(); };
+    template<class Type>
+    concept has_clear = requires(Type a) { a.clear(); };
     template<class> struct return_type;
     template<class R, class...T> struct return_type<R(T...)> { using type = R; };
     template<class> struct to_refs;
@@ -366,7 +368,11 @@ namespace kaixo {
     private:
         inline container m_Get(std::size_t n) {
             container& result = name_alias.run_expression();
-            result.clear();
+
+            // Some std containers don't have 'clear', like queue, and priority queue
+            // Then we will clear using assignment to a new container;
+            if constexpr (has_clear<container>) result.clear();
+            else result = {};
 
             bool needs_reset[sizeof...(LinkedContainers)];
             std::fill(std::begin(needs_reset), std::end(needs_reset), false);
@@ -376,12 +382,14 @@ namespace kaixo {
                 return result;
 
             std::tuple<LinkedContainers::iterator...> its;
+            std::tuple<LinkedContainers::iterator...> ends;
             set_begin(its, sequence); // Initialize all iterators to begin
-
+            
             int index = container_count - 1;
             bool done = false;
             while (!done) { // This will loop through all the values in the cartesian product of the linked containers.
                 set_values(its, sequence); // Set all vars to the values that the iterators point to.
+                set_end(ends, sequence);
 
                 bool _break = false;
                 for (auto& b : breakpoints)
@@ -405,9 +413,9 @@ namespace kaixo {
                     if (n && result.size() == n)
                         break;
                 }
-                if (!check_end(its, index, sequence))
+                if (!check_end(its, ends, index, sequence))
                     increment(its, index, sequence); // Increment the iterator
-                while (check_end(its, index, sequence)) { // And check if it's now at the end.
+                while (check_end(its, ends, index, sequence)) { // And check if it's now at the end.
                     set_begin(its, index, sequence); // Reset the iterator
                     index--;                         // And go to the next index to increment that one.
                     if (index == -1) {               // If we're at the end, we're done.
@@ -415,7 +423,7 @@ namespace kaixo {
                         break;
                     }
 
-                    if (!check_end(its, index, sequence)) {
+                    if (!check_end(its, ends, index, sequence)) {
                         increment(its, index, sequence); // Otherwise increment the iterator and loop to check if also at the end.
                         
                         needs_reset[index + 1] = true;
@@ -430,7 +438,6 @@ namespace kaixo {
                         }
                     }
                 }
-
                 index = container_count - 1; // Reset index back to 0 for the next iteration.
             }
 
@@ -443,20 +450,25 @@ namespace kaixo {
          */
         template<class T, std::size_t ...Is>
         inline void set_begin(T& tuple, std::index_sequence<Is...>) {
-            ((void(std::get<Is>(tuple) = std::get<Is>(containers).begin()),
+            ((void(std::get<Is>(tuple) = std::move(std::get<Is>(containers).begin())),
                 has_var_as_container && std::get<Is>(containers).size() ? (std::get<Is>(containers).variable = *std::get<Is>(containers).begin(), true) : true),
                 ...);
         }
 
         template<class T, std::size_t ...Is>
-        inline void set_begin(T& tuple, std::size_t i, std::index_sequence<Is...>) {
-            ((Is == i ? (std::get<Is>(tuple) = std::get<Is>(containers).begin(), true) : true), ...);
+        inline void set_end(T& tuple, std::index_sequence<Is...>) {
+            ((void(std::get<Is>(tuple) = std::move(std::get<Is>(containers).end()))), ...);
         }
 
         template<class T, std::size_t ...Is>
-        inline bool check_end(T& tuple, size_t i, std::index_sequence<Is...>) {
+        inline void set_begin(T& tuple, std::size_t i, std::index_sequence<Is...>) {
+            ((Is == i ? (std::get<Is>(tuple) = std::move(std::get<Is>(containers).begin()), true) : true), ...);
+        }
+
+        template<class T, std::size_t ...Is>
+        inline bool check_end(T& tuple, T& ends, size_t i, std::index_sequence<Is...>) {
             bool is_end = false;
-            ((Is == i ? (is_end = std::get<Is>(tuple) == std::get<Is>(containers).end(), true) : true), ...);
+            ((Is == i ? (is_end = std::get<Is>(tuple) == std::get<Is>(ends), true) : true), ...);
             return is_end;
         }
 
@@ -468,11 +480,6 @@ namespace kaixo {
         template<class T, std::size_t ...Is>
         inline void increment(T& tuple, std::size_t index, std::index_sequence<Is...>) {
             ((Is == index ? (++std::get<Is>(tuple), true) : true), ...);
-        }
-
-        template<class T, std::size_t ...Is>
-        inline void set_as_end(T& tuple, std::size_t index, std::index_sequence<Is...>) {
-            ((Is == index ? (std::get<Is>(tuple) = std::get<Is>(containers).end(), true) : true), ...);
         }
     };
 
