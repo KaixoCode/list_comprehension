@@ -106,6 +106,21 @@ var<int> a, b;
 auto r16 = lc[a | b <- range(0, 10), a <<= b * 2];
 ```
 
+Container expansion! Basically fold expressions, but for variables of containers. Works with any operator!
+```cpp
+var<std::vector<int>> xs;
+std::vector<std::vector<int>> xxs{ { 2, 2, 2 }, { 3, 3, 3 }, { 4, 4, 4 } };
+auto r17 = lc[(xs + ___) | xs <- xxs];
+```
+
+On top of that container expansion. You can also have a calculation on each element first, and then expand
+using any operator. But you can use the comma operator to expand it back into its original container.
+```cpp
+var<std::vector<int>> xs;
+std::vector<std::vector<int>> xxs{ { 2, 2, 2 }, { 3, 3, 3 }, { 4, 4, 4 } };
+auto r18 = lc[((xs * 10), ___) | xs <- xxs];
+```
+
 ## How it works
 Operator overloads! Obviously, but how exactly? The first part is the `container_syntax`, which is the part before the `|`, and it determines what the resulting container is. In the `container_syntax` a tuple of expressions is stored, which can be evaluated when generating values for the result. 
 
