@@ -80,4 +80,12 @@ int main()
 
     // Variable assignments.You can have intermediate expressions to use in the rest of the list comprehension!
     auto r16 = lc[a | b <- range(0, 10), a <<= b * 2];
+
+    // Container expansion! Basically fold expressions, but for variables of containers. Works with any
+    // operator!
+    auto r17 = lc[(xs + ___) | xs <- xxs];
+
+    // On top of that container expansion. You can also have a calculation on each element first, and then expand
+    // using any operator. But you can use the comma operator to expand it back into its original container.
+    auto r18 = lc[((xs + 10), ___) | xs <- xxs];
 }

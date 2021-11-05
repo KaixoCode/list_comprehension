@@ -340,7 +340,18 @@ void test() {
 	std::cout << index << std::endl;
 }
 
+
+
+
 int main() {
+
+
+
+	var<int> x;
+	var<range<int>> y;
+	auto r = lcl[(y + ___) | x <- range(1, inf), y <<= range(0, x)];
+	auto res = r.take(1000);
+
 	test();
 	container_types();
 	all_operators();

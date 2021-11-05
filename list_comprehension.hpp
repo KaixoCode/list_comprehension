@@ -45,6 +45,11 @@ namespace kaixo {
         a.clear(); 
     };
 
+    template<class Type>
+    concept has_reserve = requires(Type a) { 
+        a.reserve(0); 
+    };
+
     template<class> struct return_type;
     template<class R, class...T> struct return_type<R(T...)> { 
         using type = R; 
@@ -309,6 +314,12 @@ namespace kaixo {
          */
         var_alias<Ty> operator<<=(expr<Ty> e) const {
             return { e, *this };
+        }
+        var_alias<Ty> operator<<=(const Ty& e) const {
+            return { expr{ [e = std::move(e)]() mutable { return e; } },* this };
+        }
+        var_alias<Ty> operator<<=(Ty& e) const {
+            return { expr{ [&e] { return e; } },* this };
         }
     };
 
@@ -846,6 +857,38 @@ namespace kaixo {
     range(Type, T2)->range<Type>;
 
     /**
+     * This is used for operations on containers, which can then be expanded
+     * using the expander syntax.
+     */
+    template<has_begin_end Ty>
+    struct container_expr {
+        using value_type = typename Ty::value_type;
+        using size_type = typename Ty::size_type;
+        var<Ty> container;
+        var<value_type> v;
+        expr<value_type> e;
+        expr<Ty> cexpr;
+        struct iterator : Ty::iterator {
+            var<value_type> v;
+            expr<value_type> e;
+            value_type& operator*() {
+                v = Ty::iterator::operator*();
+                v = e.run_expression();
+                return v.run_expression();
+            }
+        };
+
+        iterator begin() { return iterator{ container.run_expression().begin(), v, e }; }
+        iterator end() { return iterator{ container.run_expression().end(), v, e }; }
+        size_type size() const { return container.run_expression().size(); }
+    };
+
+    /**
+     * Used in the expander operators.
+     */
+    struct expander {} ___;
+
+    /**
      * All the operators that make the magic happen.
      */
     namespace lc_operators {
@@ -892,6 +935,116 @@ namespace kaixo {
         u_var_op(!);
         u_var_op(*);
         u_var_op(&);
+
+#define var_container_op(x)\
+    template<has_begin_end Ty> container_expr<Ty> operator x(expr<Ty> a, const typename Ty::value_type& b) {\
+	    var<typename Ty::value_type> v; return { {}, v, v x b, a }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(expr<Ty> a, var<typename Ty::value_type> b) {\
+	    var<typename Ty::value_type> v; return { {}, v, v x b, a }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(expr<Ty> a, expr<typename Ty::value_type> b) {\
+	    var<typename Ty::value_type> v; return { {}, v, v x b, a }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(const typename Ty::value_type& b, expr<Ty> a) {\
+	    var<typename Ty::value_type> v; return { {}, v, v x b, a }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(var<typename Ty::value_type> b, expr<Ty> a) {\
+	    var<typename Ty::value_type> v; return { {}, v, v x b, a }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(expr<typename Ty::value_type> b, expr<Ty> a) {\
+	    var<typename Ty::value_type> v; return { {}, v, v x b, a }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(var<Ty> a, const typename Ty::value_type& b) {\
+	    var<typename Ty::value_type> v; return { a, v, v x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(var<Ty> a, var<typename Ty::value_type> b) {\
+	    var<typename Ty::value_type> v; return { a, v, v x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(var<Ty> a, expr<typename Ty::value_type> b) {\
+	    var<typename Ty::value_type> v; return { a, v, v x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(const typename Ty::value_type& b, var<Ty> a) {\
+	    var<typename Ty::value_type> v; return { a, v, v x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(var<typename Ty::value_type> b, var<Ty> a) {\
+	    var<typename Ty::value_type> v; return { a, v, v x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(expr<typename Ty::value_type> b, var<Ty> a) {\
+	    var<typename Ty::value_type> v; return { a, v, v x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(container_expr<Ty>&& a, const typename Ty::value_type& b) {\
+	    return { a.container, a.v, a.e x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(container_expr<Ty>&& a, var<typename Ty::value_type> b) {\
+	    return { a.container, a.v, a.e x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(container_expr<Ty>&& a, expr<typename Ty::value_type> b) {\
+	    return { a.container, a.v, a.e x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(const typename Ty::value_type& b, container_expr<Ty>&& a) {\
+	    return { a.container, a.v, a.e x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(var<typename Ty::value_type> b, container_expr<Ty>&& a) {\
+	    return { a.container, a.v, a.e x b }; }\
+    template<has_begin_end Ty> container_expr<Ty> operator x(expr<typename Ty::value_type> b, container_expr<Ty>&& a) {\
+	    return { a.container, a.v, a.e x b }; }
+
+        var_container_op(+);
+        var_container_op(-);
+        var_container_op(/ );
+        var_container_op(*);
+        var_container_op(%);
+        var_container_op(== );
+        var_container_op(!= );
+        var_container_op(<= );
+        var_container_op(>= );
+        var_container_op(> );
+        var_container_op(< );
+        var_container_op(<=> );
+        var_container_op(&&);
+        var_container_op(&);
+        var_container_op(|| );
+        var_container_op(| );
+        var_container_op(<< );
+        var_container_op(>> );
+
+#define var_expand_op(x) \
+        template<has_begin_end Ty> expr<typename Ty::value_type> operator x(container_expr<Ty>&& c, expander&) { \
+            return { [c = std::move(c)] () mutable -> typename Ty::value_type { \
+                bool s = true; \
+                if (c.cexpr.storage.storage) c.container = c.cexpr.run_expression(); \
+                typename Ty::value_type result = *c.begin();\
+                for (auto& i : c) { if (s) { s = false; continue; } result = result x i; } return result; } }; } \
+        template<has_begin_end Ty> expr<typename Ty::value_type> operator x(var<Ty> c, expander&) { \
+            return { [c] () mutable -> typename Ty::value_type { bool s = true; typename Ty::value_type result = *(c.run_expression().begin());\
+                for (auto& i : c.run_expression()) { if (s) { s = false; continue; } result = result x i; } return result; } }; }
+
+        var_expand_op(+);
+        var_expand_op(-);
+        var_expand_op(/);
+        var_expand_op(*);
+        var_expand_op(%);
+        var_expand_op(== );
+        var_expand_op(!= );
+        var_expand_op(<= );
+        var_expand_op(>= );
+        var_expand_op(> );
+        var_expand_op(< );
+        var_expand_op(<=> );
+        var_expand_op(&&);
+        var_expand_op(&);
+        var_expand_op(|| );
+        var_expand_op(| );
+        var_expand_op(<< );
+        var_expand_op(>> );
+
+        template<has_begin_end Ty> expr<Ty> operator,(container_expr<Ty>&& c, expander&) {
+            return { [c = std::move(c)] () mutable -> Ty {
+                Ty ty;
+                if (c.cexpr.storage.storage) {
+                    c.container = c.cexpr.run_expression();
+                }
+                if constexpr (has_reserve<Ty>) {
+                    ty.reserve(c.container.run_expression().size());
+                }
+                for (auto& i : c) {
+                    if constexpr (std::same_as<std::string, Ty>)
+                        ty.push_back(i);
+                    else if constexpr (has_emplace_back<Ty, typename Ty::value_type>)
+                        ty.emplace_back(i);
+                    else if constexpr (has_try_emplace<Ty, typename Ty::value_type>)
+                        ty.try_emplace(i);
+                    else
+                        ty.emplace(i);
+                }
+                return ty;
+            } };
+        }
 
         /**
          * This user-defined literal is necessary because you cannot overload the unary '-'
