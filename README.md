@@ -42,7 +42,9 @@ Nested list comprehensions! Yes, you heard that right! Nested list comprehension
 ```cpp
 var<int> x;
 var<std::vector<int>> xs;
-std::vector<std::vector<int>> xxs{ { 1,3,5,2,3,1,2,4,5 }, { 1,2,3,4,5,6,7,8,9 }, { 1,2,4,2,1,6,3,1,3,2,3,6 } };
+std::vector<std::vector<int>> xxs{ 
+    { 1,3,5,2,3,1,2,4,5 }, { 1,2,3,4,5,6,7,8,9 }, { 1,2,4,2,1,6,3,1,3,2,3,6 } 
+};
 auto r8 = lc[lcv[x | x <- xs, x % 2 == 0] | xs <- xxs];
 ```
 
@@ -93,7 +95,8 @@ Name alias for the current result! This means you can use the current result of 
 var<std::vector<int>> xs;
 xs.run_expression().reserve(1000000); // Reserve to prevent reallocation.
 var<int> x, a;
-auto primegenerator = lcl[xs = x | x <- range(2, inf), lcl[a | a <- xs, x % a == 0, brk <<= a > sqrt(x)].max_size(0)];
+auto primegenerator = 
+    lcl[xs = x | x <- range(2, inf), lcl[a | a <- xs, x % a == 0, brk <<= a > sqrt(x)].max_size(0)];
 auto r15 = primegenerator.take(1000000).back(); // Get the millionth prime!
 ```
 
@@ -101,6 +104,21 @@ Variable assignments. You can have intermediate expressions to use in the rest o
 ```cpp
 var<int> a, b;
 auto r16 = lc[a | b <- range(0, 10), a <<= b * 2];
+```
+
+Container expansion! Basically fold expressions, but for variables of containers. Works with any operator!
+```cpp
+var<std::vector<int>> xs;
+std::vector<std::vector<int>> xxs{ { 2, 2, 2 }, { 3, 3, 3 }, { 4, 4, 4 } };
+auto r17 = lc[(xs + ___) | xs <- xxs];
+```
+
+On top of that container expansion. You can also have a calculation on each element first, and then expand
+using any operator. But you can use the comma operator to expand it back into its original container.
+```cpp
+var<std::vector<int>> xs;
+std::vector<std::vector<int>> xxs{ { 2, 2, 2 }, { 3, 3, 3 }, { 4, 4, 4 } };
+auto r18 = lc[((xs * 10), ___) | xs <- xxs];
 ```
 
 ## How it works
