@@ -998,11 +998,17 @@ namespace kaixo {
             return { [c = std::move(c)] () mutable -> typename Ty::value_type { \
                 bool s = true; \
                 if (c.cexpr.storage.storage) c.container = c.cexpr.run_expression(); \
+                if (!c.size()) return 0;\
                 typename Ty::value_type result = *c.begin();\
                 for (auto& i : c) { if (s) { s = false; continue; } result = result x i; } return result; } }; } \
         template<has_begin_end Ty> expr<typename Ty::value_type> operator x(var<Ty> c, expander&) { \
-            return { [c] () mutable -> typename Ty::value_type { bool s = true; typename Ty::value_type result = *(c.run_expression().begin());\
-                for (auto& i : c.run_expression()) { if (s) { s = false; continue; } result = result x i; } return result; } }; }
+            return { [c] () mutable -> typename Ty::value_type { bool s = true; if (!c.run_expression().size()) return 0; \
+                typename Ty::value_type result = *(c.run_expression().begin());\
+                for (auto& i : c.run_expression()) { if (s) { s = false; continue; } result = result x i; } return result; } }; }\
+        template<has_begin_end Ty> expr<typename Ty::value_type> operator x(expr<Ty> c, expander&) { \
+            return { [c] () mutable -> typename Ty::value_type { bool s = true; auto res = c.run_expression(); if (!res.size()) return 0; \
+                typename Ty::value_type result = *(res.begin());\
+                for (auto& i : res) { if (s) { s = false; continue; } result = result x i; } return result; } }; }
 
         var_expand_op(+);
         var_expand_op(-);

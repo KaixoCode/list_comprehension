@@ -345,12 +345,14 @@ void test() {
 
 int main() {
 
+	var<int> x, y;
+	var<std::vector<int>> xs;
+	auto prime_generator = lcl[xs = x | x <- range(2, inf), lcl[y | y <- xs, x % y == 0, brk <<= y > sqrt(x)].max_size(0)];
 
 
-	var<int> x;
-	var<range<int>> y;
-	auto r = lcl[(y + ___) | x <- range(1, inf), y <<= range(0, x)];
-	auto res = r.take(1000);
+	var<int> a, b, c, d;
+
+	auto primes = prime_generator.take(30000);
 
 	test();
 	container_types();
