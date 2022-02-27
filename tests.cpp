@@ -67,27 +67,16 @@ int main()
     constexpr auto rs2 = lc[(a + b + c) | (a, b, c) <- (range(0, 10), range(0, 10), range(0, 10))];
     constexpr auto v2 = rs2[6];
 
+    constexpr auto aoine1 = a * a;
+    constexpr auto aoine2 = a * a;
+    constexpr auto aoine3 = aoine1 * aoine2;
+
     constexpr auto rs4 = lc[(a, b, c) | (a, b) <- lc[(a, b) | a <- range(0, inf), b <- range(0, 10)], c <- range(0, 10)];
     constexpr auto v4 = rs4[106];
 
     constexpr auto rs5 = lc[c | a <- range(0ll, inf), b <<= a * a, c <<= b * b, a * 100 < c, c != 100];
     constexpr auto v5 = rs5[3099];
     
-    constexpr auto aaaefa = std::ranges::range<decltype(rs5)>;
-    constexpr auto nef = container_type<std::ranges::iota_view<int>>;
-    
-    constexpr auto rs8 = lc[a | a <- std::views::iota(0, 10)];
-    constexpr auto v8 = rs8[4];
-    
-    
-    constexpr auto aienfa = container_type<cart_t<range<int>, range<int>>>;
-
-    // 
-    //constexpr auto rs6 = lc[min(a, 5) | a <- range(0, 10)];
-    //constexpr auto v6 = rs6[6];
-    //
-    //constexpr auto rs7 = lc[a | a <- "woof"sv];
-    //std::vector<char> v7 = rs7;
 
 
     return 0;

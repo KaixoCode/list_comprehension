@@ -748,7 +748,7 @@ namespace kaixo {
         constexpr brk_t brk;
 
         constexpr auto operator<<=(const brk_t&, specialization<expression> auto&& expr1) {
-            return break_condition{ expr1 };
+            return break_condition{ std::forward<decltype(expr1)>(expr1) };
         }
 
         template<is_var_type A>
@@ -758,12 +758,11 @@ namespace kaixo {
 
         template<is_var_type A>
         constexpr auto operator<<=(const A&, specialization<expression> auto&& expr1) {
-            return var_alias<A, decltype(expr1)>{ expr1 };
+            return var_alias<A, decltype(expr1)>{ std::forward<decltype(expr1)>(expr1) };
         }
 
         // ===============================================================
 
-        // Define what
         // Only valid argument for operators if not variable, expression, or container
         template<class Ty>
         concept valid_op_type = (!is_var_type<Ty> && !container_type<Ty> && !specialization<Ty, expression>);
@@ -777,16 +776,17 @@ namespace kaixo {
                                                                                                                                            \
         template<is_var_type B>                                                                                                            \
         constexpr auto operator op(specialization<expression> auto&& expr1, const B&) {                                                    \
-            return expression{ [expr1 = std::move(expr1)] (auto& vals) { return expr1(vals) op vals.get<B::name>(); } };                   \
+            return expression{ [expr1 = std::forward<decltype(expr1)>(expr1)] (auto& vals) { return expr1(vals) op vals.get<B::name>(); } };                   \
         }                                                                                                                                  \
                                                                                                                                            \
         template<is_var_type A>                                                                                                            \
         constexpr auto operator op(const A&, specialization<expression> auto&& expr2) {                                                    \
-            return expression{ [expr2 = std::move(expr2)] (auto& vals) { return vals.get<A::name>() op expr2(vals); } };                   \
+            return expression{ [expr2 = std::forward<decltype(expr2)>(expr2)] (auto& vals) { return vals.get<A::name>() op expr2(vals); } };                   \
         }                                                                                                                                  \
                                                                                                                                            \
         constexpr auto operator op(specialization<expression> auto&& expr1, specialization<expression> auto&& expr2) {                     \
-            return expression{ [expr1 = std::move(expr1), expr2 = std::move(expr2)] (auto& vals) { return expr1(vals) op expr2(vals); } }; \
+            return expression{ [expr1 = std::forward<decltype(expr1)>(expr1),                                                              \
+                expr2 = std::forward<decltype(expr2)>(expr2)] (auto& vals) { return expr1(vals) op expr2(vals); } };                       \
         }                                                                                                                                  \
                                                                                                                                            \
         template<is_var_type A, valid_op_type B>                                                                                           \
@@ -796,7 +796,7 @@ namespace kaixo {
                                                                                                                                            \
         template<valid_op_type B>                                                                                                          \
         constexpr auto operator op(specialization<expression> auto&& expr1, B& b) {                                                        \
-            return expression{ [&, expr1 = std::move(expr1)] (auto& vals) { return expr1(vals) op b; } };                                  \
+            return expression{ [&, expr1 = std::forward<decltype(expr1)>(expr1)] (auto& vals) { return expr1(vals) op b; } };                                  \
         }                                                                                                                                  \
                                                                                                                                            \
         template<is_var_type A, valid_op_type B>                                                                                           \
@@ -806,7 +806,7 @@ namespace kaixo {
                                                                                                                                            \
         template<valid_op_type B>                                                                                                          \
         constexpr auto operator op(B& b, specialization<expression> auto&& expr1) {                                                        \
-            return expression{ [&, expr1 = std::move(expr1)] (auto& vals) { return b op expr1(vals); } };                                  \
+            return expression{ [&, expr1 = std::forward<decltype(expr1)>(expr1)] (auto& vals) { return b op expr1(vals); } };                                  \
         }                                                                                                                                  \
                                                                                                                                            \
         template<is_var_type A, valid_op_type B>                                                                                           \
@@ -816,7 +816,7 @@ namespace kaixo {
                                                                                                                                            \
         template<valid_op_type B>                                                                                                          \
         constexpr auto operator op(specialization<expression> auto&& expr1, B&& b) {                                                       \
-            return expression{ [b = std::move(b), expr1 = std::move(expr1)] (auto& vals) { return expr1(vals) op b; } };                   \
+            return expression{ [b = std::move(b), expr1 = std::forward<decltype(expr1)>(expr1)] (auto& vals) { return expr1(vals) op b; } };                   \
         }                                                                                                                                  \
                                                                                                                                            \
         template<is_var_type A, valid_op_type B>                                                                                           \
@@ -826,7 +826,7 @@ namespace kaixo {
                                                                                                                                            \
         template<valid_op_type B>                                                                                                          \
         constexpr auto operator op(B&& b, specialization<expression> auto&& expr1) {                                                       \
-            return expression{ [b = std::move(b), expr1 = std::move(expr1)] (auto& vals) { return b op expr1(vals); } };                   \
+            return expression{ [b = std::move(b), expr1 = std::forward<decltype(expr1)>(expr1)] (auto& vals) { return b op expr1(vals); } };                   \
         }                                                                                                                                  \
 
         create_op(+) create_op(-) create_op(*) create_op(/ ) create_op(== ) create_op(!= ) create_op(<= );
