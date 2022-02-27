@@ -7,16 +7,24 @@
 #include <cstddef>
 
 namespace kaixo {
-
     template<class ...Tys> using tuple_cat_t = decltype(std::tuple_cat(std::declval<Tys>()...));
+
+    template<class Ty> concept has_value_type = requires() { typename Ty::value_type; };
+    template<class Ty> concept has_range_value_type = !has_value_type<Ty> && requires() { typename std::ranges::range_value_t<Ty>; };
+
+    template<class Ty> struct value_type;
+    template<has_value_type Ty> struct value_type<Ty> { using type = typename Ty::value_type; };
+    template<has_range_value_type Ty> struct value_type<Ty> { using type = typename std::ranges::range_value_t<Ty>; };
+    template<class Ty> using value_type_t = typename value_type<Ty>::type;
+
+    template<class Ty> using iterator_type_t = decltype(std::declval<std::decay_t<Ty>&>().begin());
 
     template<class Ty>
     concept container_type = requires(const std::decay_t<Ty> ty) {
-        typename std::decay_t<Ty>::value_type;
-        typename std::decay_t<Ty>::size_type;
-        typename std::decay_t<Ty>::const_iterator;
-        { ty.begin() } -> std::same_as<typename std::decay_t<Ty>::const_iterator>;
-        { ty.end() } -> std::same_as<typename std::decay_t<Ty>::const_iterator>;
+        typename value_type_t<std::decay_t<Ty>>;
+        typename iterator_type_t<std::decay_t<Ty>>;
+        { ty.begin() } -> std::same_as<iterator_type_t<std::decay_t<Ty>>>;
+        { ty.end() } -> std::same_as<iterator_type_t<std::decay_t<Ty>>>;
     };
 
     template<class Ty> concept has_names = requires () { typename std::decay_t<Ty>::names; };
@@ -130,27 +138,34 @@ namespace kaixo {
     class zip_t {
         using container_type_a = std::decay_t<A>;
         using container_type_b = std::decay_t<B>;
-        using value_type_a = typename container_type_a::value_type;
-        using value_type_b = typename container_type_b::value_type;
-        using iterator_a = typename container_type_a::const_iterator;
-        using iterator_b = typename container_type_b::const_iterator;
+        using value_type_a = value_type_t<container_type_a>;
+        using value_type_b = value_type_t<container_type_b>;
+        using iterator_a = iterator_type_t<container_type_a>;
+        using iterator_b = iterator_type_t<container_type_b>;
     public:
         using value_type = tuple_cat_t<as_tuple_t<value_type_a>, as_tuple_t<value_type_b>>;
-        using size_type = typename container_type_a::size_type;
+        using size_type = std::size_t;
 
         explicit constexpr zip_t(A a, B b) : a(std::forward<A>(a)), b(std::forward<B>(b)) {}
 
         class iterator {
         public:
+            using iterator_category = std::input_iterator_tag;
             using value_type = zip_t::value_type;
+            using reference = value_type;
+            using difference_type = std::ptrdiff_t;
             using size_type = zip_t::size_type;
 
+            constexpr iterator() {};
             constexpr iterator(const iterator& other) : it_a(other.it_a), it_b(other.it_b) {}
             constexpr iterator(iterator_a it_a, iterator_b it_b) : it_a(it_a), it_b(it_b) {}
             constexpr iterator& operator=(const iterator& other) { it_a = other.it_a, it_b = other.it_b; return *this; }
+            constexpr iterator operator++(int) { iterator _it = *this; operator++(); return _it; }
             constexpr iterator& operator++() { ++it_a, ++it_b; return *this; }
+            constexpr iterator operator--(int) { iterator _it = *this; operator--(); return _it; }
             constexpr iterator& operator--() { --it_a, --it_b; return *this; }
             constexpr bool operator==(const iterator& other) const { return other.it_a == it_a || other.it_b == it_b; }
+            constexpr bool operator!=(const iterator& other) const { return !operator==(other); }
             constexpr value_type operator*() const { return std::tuple_cat(std::tuple{ *it_a }, std::tuple{ *it_b }); }
 
         private:
@@ -179,32 +194,39 @@ namespace kaixo {
     template<class Fun, container_type Ty>
     class map_t {
         using container_type = std::decay_t<Ty>;
-        using container_value_type = typename container_type::value_type;
+        using container_value_type = value_type_t<container_type>;
         using function_type = std::decay_t<Fun>;
-        using container_iterator = typename container_type::const_iterator;
+        using container_iterator = iterator_type_t<container_type>;
     public:
         using value_type = decltype(std::declval<Fun>()(*std::declval<container_iterator>()));
-        using size_type = typename container_type::size_type;
+        using size_type = std::size_t;
 
         explicit constexpr map_t(Fun transform, Ty container)
             : transform(std::forward<Fun>(transform)), container(std::forward<Ty>(container)) {}
 
         class iterator {
         public:
+            using iterator_category = std::input_iterator_tag;
             using value_type = map_t::value_type;
+            using reference = value_type;
+            using difference_type = std::ptrdiff_t;
             using size_type = map_t::size_type;
 
-            constexpr iterator(const iterator& other) : it(other.it), transform(other.transform) {}
+            constexpr iterator() {};
+            constexpr iterator(const iterator& other) : it(other.it), transform(&other.transform) {}
             constexpr iterator(const function_type& transform, container_iterator it) : it(it), transform(transform) {}
-            constexpr iterator& operator=(const iterator& other) { it = other.it; return *this; }
+            constexpr iterator& operator=(const iterator& other) { transform = other.transform; it = other.it; return *this; }
+            constexpr iterator operator++(int) { iterator _it = *this; ++it; return _it; }
             constexpr iterator& operator++() { ++it; return *this; }
+            constexpr iterator operator--(int) { iterator _it = *this; --it; return _it; }
             constexpr iterator& operator--() { --it; return *this; }
             constexpr bool operator==(const iterator& other) const { return other.it == it; }
+            constexpr bool operator!=(const iterator& other) const { return !operator==(other); }
             constexpr value_type operator*() const { return transform(*it); }
 
         private:
             container_iterator it;
-            const function_type& transform;
+            const function_type* transform = nullptr;
         };
 
         using const_iterator = iterator;
@@ -230,47 +252,54 @@ namespace kaixo {
     class cart_t {
         using container_type_a = std::decay_t<A>;
         using container_type_b = std::decay_t<B>;
-        using value_type_a = typename container_type_a::value_type;
-        using value_type_b = typename container_type_b::value_type;
-        using iterator_a = typename container_type_a::const_iterator;
-        using iterator_b = typename container_type_b::const_iterator;
+        using value_type_a = value_type_t<container_type_a>;
+        using value_type_b = value_type_t<container_type_b>;
+        using iterator_a = iterator_type_t<container_type_a>;
+        using iterator_b = iterator_type_t<container_type_b>;
     public:
         using value_type = tuple_cat_t<as_tuple_t<value_type_a>, as_tuple_t<value_type_b>>;
-        using size_type = typename container_type_a::size_type;
+        using size_type = std::size_t;
 
         explicit constexpr cart_t(A a, B b) : a(std::forward<A>(a)), b(std::forward<B>(b)) {}
 
         class iterator {
         public:
+            using iterator_category = std::input_iterator_tag;
             using value_type = cart_t::value_type;
+            using reference = value_type;
+            using difference_type = std::ptrdiff_t;
             using size_type = cart_t::size_type;
 
+            constexpr iterator() {};
             constexpr iterator(const iterator& other) : cart(other.cart), it_a(other.it_a), it_b(other.it_b) {}
-            constexpr iterator(const cart_t& cart, iterator_a it_a, iterator_b it_b) : it_a(it_a), it_b(it_b), cart(cart) {}
-            constexpr iterator& operator=(const iterator& other) { it_a = other.it_a, it_b = other.it_b; return *this; }
+            constexpr iterator(const cart_t& cart, iterator_a it_a, iterator_b it_b) : it_a(it_a), it_b(it_b), cart(&cart) {}
+            constexpr iterator& operator=(const iterator& other) { cart = other.cart; it_a = other.it_a, it_b = other.it_b; return *this; }
 
+            constexpr iterator operator++(int) { iterator _it = *this; operator++(); return _it; }
             constexpr iterator& operator++() {
-                if (++it_b == cart.b.end()) {
-                    it_b = cart.b.begin();
+                if (++it_b == cart->b.end()) {
+                    it_b = cart->b.begin();
                     ++it_a;
                 }
                 return *this;
             }
 
+            constexpr iterator operator--(int) { iterator _it = *this; operator--(); return _it; }
             constexpr iterator& operator--() {
-                if (--it_b == cart.b.begin()) {
-                    it_b = cart.b.end();
+                if (--it_b == cart->b.begin()) {
+                    it_b = cart->b.end();
                     --it_a;
                 }
                 return *this;
             }
             constexpr bool operator==(const iterator& other) const { return other.it_a == it_a && other.it_b == it_b; }
+            constexpr bool operator!=(const iterator& other) const { return !operator==(other); }
             constexpr value_type operator*() const { return std::tuple_cat(std::tuple{ *it_a }, std::tuple{ *it_b }); }
 
         private:
             iterator_a it_a;
             iterator_b it_b;
-            const cart_t& cart;
+            const cart_t* cart = nullptr;
         };
 
         using const_iterator = iterator;
@@ -298,10 +327,10 @@ namespace kaixo {
     class named_container {
     public:
         using container_type = std::decay_t<Container>;
-        using value_type = typename container_type::value_type;
-        using size_type = typename container_type::size_type;
-        using iterator = typename container_type::const_iterator;
-        using const_iterator = typename container_type::const_iterator;
+        using value_type = value_type_t<container_type>;
+        using size_type = std::size_t;
+        using iterator = iterator_type_t<container_type>;
+        using const_iterator = iterator_type_t<container_type>;
 
         using names = Names;
 
@@ -369,8 +398,8 @@ namespace kaixo {
         class list_comprehension {
         using base_type = list_comprehension_base<Expression, Container, VarAliases, Constraints, Breaks>;
         using container_type = std::decay_t<Container>;
-        using container_iterator = typename container_type::const_iterator;
-        using container_value_type = typename container_type::value_type;
+        using container_iterator = iterator_type_t<container_type>;
+        using container_value_type = value_type_t<container_type>;
         using named_tuple_type = tuple_with_names<typename container_type::names, as_tuple_t<container_value_type>>;
 
         // Recursive definition for tuple_with_names type, since every argument relies on the
@@ -391,7 +420,7 @@ namespace kaixo {
 
         public:
             using value_type = decltype(std::declval<Expression>()(std::declval<final_named_tuple_type&>()));
-            using size_type = typename container_type::size_type;
+            using size_type = std::size_t;
 
             constexpr list_comprehension(base_type&& base) : data(std::move(base)) {}
             constexpr list_comprehension(list_comprehension&& move) : data(std::move(move.data)) {}
@@ -399,65 +428,72 @@ namespace kaixo {
 
             class iterator {
             public:
+                using iterator_category = std::input_iterator_tag;
                 using value_type = list_comprehension::value_type;
+                using reference = value_type;
+                using difference_type = std::ptrdiff_t;
                 using size_type = list_comprehension::size_type;
 
+                constexpr iterator() {};
                 constexpr iterator(const iterator& other) : me(other.me), it(other.it) { prepare(); }
-                constexpr iterator(const list_comprehension& me, container_iterator it) : me(me), it(it) { prepare(); }
-                constexpr iterator& operator=(const iterator& other) { it = other.it; return *this; }
+                constexpr iterator(const list_comprehension& me, container_iterator it) : me(&me), it(it) { prepare(); }
+                constexpr iterator& operator=(const iterator& other) { me = other.me; it = other.it; return *this; }
 
+                constexpr iterator operator++(int) { iterator _it = *this; operator++(); return _it; }
                 constexpr iterator& operator++() {
                     // If we have breaking conditions, check those, and set to end if break
                     if constexpr (std::tuple_size_v<Breaks> != 0) {
-                        if (me.check_breaks(me.breaks_seq, get_assigned_value())) { it = me.data.container.end(); return *this; }
+                        if (me->check_breaks(me->breaks_seq, get_assigned_value())) { it = me->data.container.end(); return *this; }
                     }
                     // no constraints = just decrement
                     if constexpr (std::tuple_size_v<Constraints> == 0) ++it;
                     else { // otherwise increment until at end or constraints pass
                         do ++it;
-                        while (!(it == me.data.container.end()) && !me.check_constraints(me.constraints_seq, get_assigned_value()));
+                        while (!(it == me->data.container.end()) && !me->check_constraints(me->constraints_seq, get_assigned_value()));
                     }
                     return *this;
                 }
 
+                constexpr iterator operator--(int) { iterator _it = *this; operator--(); return _it; }
                 constexpr iterator& operator--() {
                     // If we have breaking conditions, check those, and set to end if break
                     if constexpr (std::tuple_size_v<Breaks> != 0) {
-                        if (me.check_breaks(me.breaks_seq, get_assigned_value())) { it = me.data.container.end(); return *this; }
+                        if (me->check_breaks(me->breaks_seq, get_assigned_value())) { it = me->data.container.end(); return *this; }
                     }
                     // no constraints = just decrement
                     if constexpr (std::tuple_size_v<Constraints> == 0) --it;
                     else { // otherwise decrement until at end or constraints pass
                         do --it;
-                        while (!(it == me.data.container.begin()) && !me.check_constraints(me.constraints_seq, get_assigned_value()));
+                        while (!(it == me->data.container.begin()) && !me->check_constraints(me->constraints_seq, get_assigned_value()));
                     }
                     return *this;
                 }
 
                 constexpr bool operator==(const iterator& other) const { return other.it == it; }
+                constexpr bool operator!=(const iterator& other) const { return !operator==(other); }
                 constexpr value_type operator*() {
                     // If constraints, value was already assigned in ++ or -- operator
-                    if constexpr (std::tuple_size_v<Constraints> == 0) return me.data.expr(get_assigned_value());
-                    else return me.data.expr(value);
+                    if constexpr (std::tuple_size_v<Constraints> == 0) return me->data.expr(get_assigned_value());
+                    else return me->data.expr(value);
                 }
 
             private:
                 final_named_tuple_type value;
                 container_iterator it;
-                const list_comprehension& me;
+                const list_comprehension* me = nullptr;
 
                 // Prepare on create, so we start at a valid index
                 constexpr void prepare() {
-                    if (!(it == me.data.container.end())) {
+                    if (!(it == me->data.container.end())) {
                         // Check constraints, if no match, operator++ to find first match
-                        if (!me.check_constraints(me.constraints_seq, get_assigned_value()))
+                        if (!me->check_constraints(me->constraints_seq, get_assigned_value()))
                             operator++();
                     }
                 }
 
                 // Assign current iterator to value, then assign var aliases as well
                 constexpr inline decltype(auto) get_assigned_value() {
-                    return me.assign_alias_values(alias_seq, value.assign(named_tuple_type{ *it }));
+                    return me->assign_alias_values(alias_seq, value.assign(named_tuple_type{ *it }));
                 }
             };
 
@@ -487,6 +523,9 @@ namespace kaixo {
                     return *_b;
                 }
             }
+
+            template<kaixo::container_type Ty>
+            constexpr operator Ty() const { return { begin(), end() }; }
 
         private:
             base_type data;
@@ -533,7 +572,7 @@ namespace kaixo {
         constexpr auto operator<(Var&, Container&& c) {
             // If the container has a tuple as its value type, we need to wrap it into 
             // another tuple to prevent cart_t from concatenating the tuples.
-            if constexpr (specialization<Container::value_type, std::tuple>) {
+            if constexpr (specialization<value_type_t<Container>, std::tuple>) {
                 const auto mapped = map_t{ [] <typename Ty>(Ty && val) {
                     return std::tuple<Ty>{ std::forward<Ty>(val) };
                 }, std::forward<Container>(c) };
@@ -547,7 +586,7 @@ namespace kaixo {
         // be std::tuple, and size must match size of tuple_of_vars
         template<container_type Container, is_var_type ...Vars>
         constexpr auto operator<(tuple_of_vars<Vars...>&&, Container&& c) {
-            static_assert(std::tuple_size_v<std::decay_t<Container>::value_type> == sizeof...(Vars),
+            static_assert(std::tuple_size_v<value_type_t<std::decay_t<Container>>> == sizeof...(Vars),
                 "tuple_of_vars is not the same size as tuple in container");
             return named_container<Container&&, std::tuple<std::decay_t<Vars>...>>{ std::forward<Container>(c) };
         }
@@ -602,7 +641,7 @@ namespace kaixo {
 
             return list_comprehension_base{
                 std::move(a.expr),
-                named_container<decltype(cart_t{ std::move(a.container), std::forward<B>(b) }), combined >
+                named_container<decltype(cart_t{ std::move(a.container), std::forward<B>(b) }), combined>
                     { cart_t{ std::move(a.container), std::forward<B>(b) } },
                 std::move(a.aliases),
                 std::move(a.constraints),
