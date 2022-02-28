@@ -66,16 +66,15 @@ int main()
 
     constexpr auto res = lc[(a, b, c) | c <- range(0, inf), b <- range(1, 10), a <- range(1, 11), a * a + b * b == c * c];
     constexpr auto v1 = res[0];
-
+    
     constexpr auto rs2 = lc[(a + b + c) | (a, b, c) <- (range(0, 10), range(0, 10), range(0, 10))];
     constexpr auto v2 = rs2[6];
-
+    
     constexpr auto rs4 = lc[(a, b, c) | (a, b) <- lc[(a, b) | a <- range(0, inf), b <- range(0, 10)], c <- range(0, 10)];
     constexpr auto v4 = rs4[106];
-
-    constexpr auto rs5 = ((a) | a <- range(0, 10), c <<= d * d);
-    using type = decltype(rs5)::needed_names;
-
+    
+    constexpr auto rs5 = lc[lc[lc[c | a <- range(0, inf), c <<= a * b * d] | b <- range(0, inf)] | d <- range(0, inf)];
+    constexpr auto v5 = rs5[5][5];
 
     //constexpr auto aine = [] (auto& v) requires (std::same_as<void, decltype(v)>) {};
 
@@ -93,19 +92,19 @@ int main()
     //constexpr auto rs5 = lc[c | a <- range(0ll, inf), b <<= a * a, c <<= b * b, a * 100 < c, c != 100];
     //constexpr auto v5 = rs5[3099];
     
-    constexpr twn aefa{ { 5, 6, 7 } };
-    constexpr auto rs6 = lc[c | a <- range(1, 10), c <<= b * a];
-    constexpr auto rs8 = rs6(aefa);
-    constexpr auto oaien = rs8.data.lazyData;
-    using aione = decltype(rs8)::final_named_tuple_type::type;
-    constexpr auto v8 = rs8[0];
-
-    constexpr auto rs9 = (lc[lc[b | a <- range(0, inf), b <<= a * c * d] | c <- range(0, inf)] | d <- range(0, inf));
-    using aefae = decltype(rs9)::needed_names;
-    using aefaf = decltype(rs9)::final_named_tuple_type;
-    using aoine = std::tuple_element_t<4, aefae>;
-
-    constexpr auto v9 = rs9[20][3];
+    //constexpr twn aefa{ { 5, 6, 7 } };
+    //constexpr auto rs6 = lc[c | a <- range(1, 10), c <<= b * a];
+    //constexpr auto rs8 = rs6(aefa);
+    //constexpr auto oaien = rs8.data.lazyData;
+    //using aione = decltype(rs8)::final_named_tuple_type::type;
+    //constexpr auto v8 = rs8[0];
+    //
+    //constexpr auto rs9 = lc[lc[lc[b | a <- range(0, inf), b <<= a * c * d] | c <- range(0, inf)] | d <- range(0, inf)];
+    //using aefae = decltype(rs9)::needed_names;
+    //using aefaf = decltype(rs9)::final_named_tuple_type;
+    //using aoine = std::tuple_element_t<4, aefae>;
+    //
+    //constexpr auto v9 = rs9[20][3];
 
 
     return 0;

@@ -457,8 +457,9 @@ namespace kaixo {
 
         template<class> struct get_stuff;
         template<class ...Tys> struct get_stuff<std::tuple<Tys...>> { using type = tuple_cat_t<typename Tys::expression_type::dependencies...>; };
-
-        using needed_names = tuple_cat_t<typename get_stuff<VarAliases>::type, typename Expression::dependencies>;
+        
+        template<class> struct get_stuff2;
+        template<class ...Tys> struct get_stuff2<std::tuple<Tys...>> { using type = std::tuple<typename Tys::var...>; };
 
         using lazy_type = std::decay_t<Lazy>;
         using expression_type = std::decay_t<Expression>;
@@ -468,6 +469,9 @@ namespace kaixo {
         using lazy_named_tuple_type = tuple_with_names<
             tuple_cat_t<typename named_tuple_type::names, typename Lazy::names>,
             tuple_cat_t<typename named_tuple_type::type, typename Lazy::type>>;
+
+        using needed_names = tuple_cat_t<typename get_stuff<VarAliases>::type, typename Expression::dependencies>;
+        using names_we_have = tuple_cat_t<typename get_stuff2<VarAliases>::type, typename container_type::names>;
 
         // Recursive definition for tuple_with_names type, since every argument relies on the
         // type of the previous one, so we need to go through the var aliases one-by-one to get final type
@@ -481,15 +485,28 @@ namespace kaixo {
                         tuple_cat_t<typename prev::names, var_alias_names_t<std::tuple<std::tuple_element_t<I - 1, VarAliases>>>>,
                         tuple_cat_t<typename prev::type, var_alias_types_t<std::tuple<std::tuple_element_t<I - 1, VarAliases>>, prev>>>();
                 }
+                else
+                    return lazy_named_tuple_type{};
             }
             using type = decltype(get_type());
         };
 
         template<> struct named_tuple_type_i<0> { using type = lazy_named_tuple_type; };
         using final_named_tuple_type = typename named_tuple_type_i<std::tuple_size_v<VarAliases>>::type;
+        
+        template<class> struct remove_front;
+        template<class Ty, class ...Tys> struct remove_front<std::tuple<Ty, Tys...>> { using type = std::tuple<Tys...>; };
+
+        template<class Ty, class T> struct reduce_names;
+        template<class Ty, class ...V> struct reduce_names<Ty, std::tuple<V...>> {
+            using type = typename remove_front<unique_tuple_t<
+                std::tuple<int, std::conditional_t<has_type_v<V, Ty>, int, V>...>>>::type;
+        };
+
+        using reduced_needed_names = typename reduce_names<names_we_have, needed_names>::type;
 
         template<class Ty>
-        constexpr static inline bool has_all_names = Ty::template check_all<needed_names>;
+        constexpr static inline bool has_all_names = Ty::template check_all<reduced_needed_names>;
     };
 
     template<
@@ -993,9 +1010,7 @@ namespace kaixo {
     // ===============================================================
 
     template<class A>
-    concept valid_list_comprehension = !std::same_as<typename A::final_named_tuple_type, void> 
-        && std::invocable<typename A::expression_type, typename A::final_named_tuple_type&>
-        && A::template has_all_names<typename A::final_named_tuple_type>;
+    concept valid_list_comprehension = A::template has_all_names<typename A::final_named_tuple_type>;
 
     // Construct the final list comprehension using the operator[] in 
     // this global constexpr object.
@@ -1012,7 +1027,7 @@ namespace kaixo {
                     new_tuple _newval;
                     _newval.assign(val.lazyData).assign(vals);
                     return operator[](list_comprehension_base<A, B, C, D, E, new_tuple>{ val, std::move(_newval) });
-                }, std::type_identity<typename list_comprehension_base<A, B, C, D, E, F>::needed_names>{} };
+                }, std::type_identity<typename list_comprehension_base<A, B, C, D, E, F>::reduced_needed_names>{} };
         }
     };
     constexpr lc_op lc;
