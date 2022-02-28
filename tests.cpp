@@ -50,6 +50,18 @@ namespace detail {
             { *i-- } -> std::same_as<std::iter_reference_t<I>>;
     };
 }
+
+template<class T, std::size_t ... Is>
+constexpr void print_tuple(auto& a, T& v, std::index_sequence<Is...>) {
+    ((a << std::get<Is>(v) << ", "), ...);
+}
+template<class ...Ty>
+constexpr auto& operator<<(auto& a, std::tuple<Ty...>& v) {
+    print_tuple(a, v, std::make_index_sequence<sizeof...(Ty)>{});
+    return a;
+}
+
+
 int main()
 {
 	using namespace kaixo;
@@ -74,7 +86,22 @@ int main()
     constexpr auto v4 = rs4[106];
     
     constexpr auto rs5 = lc[lc[lc[c * a * b | (a, c) <- (range(0, inf), range(0, inf))] | b <- range(0, inf), c <<= b * d] | d <- range(0, inf)];
-    constexpr auto v5 = rs5[5][4][7];
+    constexpr auto v5 = rs5[5][4][5];
+
+    constexpr auto rs6 =
+        lc[(a, b, c, d, a * b * c * d) | 
+            a <- range(1, 5), 
+            b <- range(1, 5), 
+            c <- range(1, 5), 
+            d <- range(1, 5), 
+            a * b * c * d > 100];
+    
+    for (auto i : rs6)
+        std::cout << i << '\n';
+
+
+    //std::vector<std::string> data{ "1jf1d", "afj3", "a09af", "a31" };
+    //auto r11 = lc[lc[c | c <- a, isalpha(c)] | a <- data];
 
     //constexpr auto aine = [] (auto& v) requires (std::same_as<void, decltype(v)>) {};
 
