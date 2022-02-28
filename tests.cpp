@@ -74,13 +74,12 @@ int main()
     constexpr auto v4 = rs4[106];
     
     constexpr auto rs5 = lc[lc[lc[c | a <- range(0, inf), c <<= a * b * d] | b <- range(0, inf)] | d <- range(0, inf)];
-    constexpr auto v5 = rs5[5][5];
+    constexpr auto v5 = rs5[5][4][7];
 
     //constexpr auto aine = [] (auto& v) requires (std::same_as<void, decltype(v)>) {};
 
     //constexpr auto paepm = a <<= a * a + b * b == c * c;
 
-    using twn = tuple_with_names<std::tuple<var_t<"a">, var_t<"b">, var_t<"c">>, std::tuple<int, int, int>>;
     //constexpr auto aome = has_tags<twn, var_t<"b">>;
     //constexpr auto ioen = decltype(paepm)::callable_with<twn&>;
     //constexpr twn aiofne{ { 3, 1 } };
