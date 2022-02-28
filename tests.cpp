@@ -53,11 +53,14 @@ namespace detail {
 
 template<class T, std::size_t ... Is>
 constexpr void print_tuple(auto& a, T& v, std::index_sequence<Is...>) {
+    a << "(";
     ((a << std::get<Is>(v) << ", "), ...);
+    a << std::get<sizeof...(Is)>(v);
+    a << ")";
 }
 template<class ...Ty>
 constexpr auto& operator<<(auto& a, std::tuple<Ty...>& v) {
-    print_tuple(a, v, std::make_index_sequence<sizeof...(Ty)>{});
+    print_tuple(a, v, std::make_index_sequence<sizeof...(Ty) - 1>{});
     return a;
 }
 
@@ -73,6 +76,8 @@ int main()
     constexpr auto b = var<"b">;
     constexpr auto c = var<"c">;
     constexpr auto d = var<"d">;
+    constexpr auto i = var<"i">;
+    constexpr auto j = var<"j">;
 
     constexpr auto aeino = a * b;
 
@@ -88,17 +93,25 @@ int main()
     constexpr auto rs5 = lc[lc[lc[c * a * b | (a, c) <- (range(0, inf), range(0, inf))] | b <- range(0, inf), c <<= b * d] | d <- range(0, inf)];
     constexpr auto v5 = rs5[5][4][5];
 
-    constexpr auto rs6 =
-        lc[(a, b, c, d, a * b * c * d) | 
-            a <- range(1, 5), 
-            b <- range(1, 5), 
-            c <- range(1, 5), 
-            d <- range(1, 5), 
-            a * b * c * d > 100];
-    
-    for (auto i : rs6)
-        std::cout << i << '\n';
+    using namespace std::views;
 
+    auto rs6 = lc[lc[(i, j) | i <- range(1, 3)] | j <- range(1, inf)];
+    
+    for (auto i : rs6 | take(5))
+    {
+        std::cout << "[";
+        for (auto j : i)
+            std::cout << j; 
+        std::cout << "],";
+    }
+
+
+    // Container  - 
+    // Alias      - 
+    // Break      - 
+    // Constraint - 
+
+    return 0;
 
     //std::vector<std::string> data{ "1jf1d", "afj3", "a09af", "a31" };
     //auto r11 = lc[lc[c | c <- a, isalpha(c)] | a <- data];
@@ -132,6 +145,4 @@ int main()
     //
     //constexpr auto v9 = rs9[20][3];
 
-
-    return 0;
 }
