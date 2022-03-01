@@ -81,30 +81,90 @@ int main()
 
     constexpr auto aeino = a * b;
 
-    constexpr auto res = lc[(a, b, c) | c <- range(0, inf), b <- range(1, 10), a <- range(1, 11), a * a + b * b == c * c];
-    constexpr auto v1 = res[0];
-    
-    constexpr auto rs2 = lc[(a + b + c) | (a, b, c) <- (range(0, 10), range(0, 10), range(0, 10))];
-    constexpr auto v2 = rs2[6];
-    
-    constexpr auto rs4 = lc[(a, b, c) | (a, b) <- lc[(a, b) | a <- range(0, inf), b <- range(0, 10)], c <- range(0, 10)];
-    constexpr auto v4 = rs4[106];
-    
-    constexpr auto rs5 = lc[lc[lc[c * a * b | (a, c) <- (range(0, inf), range(0, inf))] | b <- range(0, inf), c <<= b * d] | d <- range(0, inf)];
-    constexpr auto v5 = rs5[5][4][5];
+    //constexpr auto res = lc[(a, b, c) | c <- range(0, inf), b <- range(1, 10), a <- range(1, 11), a * a + b * b == c * c];
+    //constexpr auto v1 = res[0];
+    //
+    //constexpr auto rs2 = lc[(a + b + c) | (a, b, c) <- (range(0, 10), range(0, 10), range(0, 10))];
+    //constexpr auto v2 = rs2[6];
+    //
+    //constexpr auto rs4 = lc[(a, b, c) | (a, b) <- lc[(a, b) | a <- range(0, inf), b <- range(0, 10)], c <- range(0, 10)];
+    //constexpr auto v4 = rs4[106];
+    //
+    //constexpr auto rs5 = lc[lc[lc[c * a * b | (a, c) <- (range(0, inf), range(0, inf))] | b <- range(0, inf), c <<= b * d] | d <- range(0, inf)];
+    //constexpr auto v5 = rs5[5][4][5];
+    //
+    //using namespace std::views;
+    //
+    //auto rs6 = lc[lc[(i, j) | i <- range(1, 3)] | j <- range(1, inf)];
+    //
+    //for (auto i : rs6 | take(5))
+    //{
+    //    std::cout << "[";
+    //    for (auto j : i)
+    //        std::cout << j; 
+    //    std::cout << "],";
+    //}
 
-    using namespace std::views;
+    //constexpr auto oane =   ((a, b, c, d) | a <- range(0, 10), b <- range(0, 10), c <<= a * 10, d <<= b * c, b != c, brk <<= b == 100);
+    constexpr auto oan1 = lc[(a, b, c, d) | a <- range(0, 3), b <- range(0, 3), c <<= a * 1, d <<= b * 1, c != d, brk <<= b == 2];
+    //constexpr auto enaf1 = *++oan1.begin();
 
-    auto rs6 = lc[lc[(i, j) | i <- range(1, 3)] | j <- range(1, inf)];
-    
-    for (auto i : rs6 | take(5))
-    {
-        std::cout << "[";
-        for (auto j : i)
-            std::cout << j; 
-        std::cout << "],";
-    }
+    constexpr auto aona = lc[lc[(b, c, a) | a <- range(1, 5), c <<= a * d, b <- range(1, 5), b != a] | d <- range(1, 5)];
+    constexpr auto aoenf = aona[2][15];
 
+    constexpr auto aoine = has_type_v<var_t<"a">, tuple_with_names<std::tuple<var_t<"a">>, std::tuple<int>>::names>;
+
+
+    //constexpr auto enaf2 = *++oan1.begin();
+    //constexpr auto enaf3 = *++++oan1.begin();
+    //constexpr auto enaf4 = *++++++oan1.begin();
+    //constexpr auto enaf5 = *++++++++oan1.begin();
+    //constexpr auto enaf6 = oan1.end() == ++++++++++oan1.begin();
+    //constexpr auto enaf7 = *++++++++++++oan1.begin();
+    //constexpr auto enaf8 = oan1.end() == ++++++++++++++oan1.begin();
+
+    //using esgrr = decltype(oane)::expression_type;
+    //using aeafa = decltype(oane)::content_type;
+    //using efaef = decltype(oan1)::iterators;
+
+    //using oaine1 = std::tuple_element_t<0, aeafa>;
+    //using oaine2 = std::tuple_element_t<1, aeafa>;
+    //using oaine3 = std::tuple_element_t<2, aeafa>;
+    //using oaine4 = std::tuple_element_t<3, aeafa>;
+    //using aoine = decltype(oane)::reduced_needed_names;
+    //using aiefa = typename filter_on_tag<lc_alias_tag, aeafa>::type;
+    //using afione1 = std::tuple_element_t<0, aiefa>;
+    //using afione2 = std::tuple_element_t<1, aiefa>;
+
+    //using ioane1 = list_comprehension<esgrr, aeafa>::container_tuple_type;
+    //using gsrgsr3 = std::tuple_element_t<0, ioane1>;
+    //using gsrgsr1 = std::tuple_element_t<1, ioane1>;
+    //using ioane2 = list_comprehension<esgrr, aeafa>::constraint_tuple_type;
+    //using gsrgsr2 = std::tuple_element_t<0, ioane2>;
+    //using ioane3 = list_comprehension<esgrr, aeafa>::break_tuple_type;
+    //using gsrgsr4 = std::tuple_element_t<0, ioane3>;  
+    //using ioane6 = list_comprehension<esgrr, aeafa>::alias_tuple_type;
+    //using gsrgsr6 = std::tuple_element_t<0, ioane6>;
+    //using gsrgsr7 = std::tuple_element_t<1, ioane6>;
+
+    //using aionf = typename filter_on_tag<lc_container_tag, aeafa>::type;
+
+    //using oaine2 = typename std::tuple_element_t<0, aionf>::second_type;
+
+    //using oaine2 = std::tuple_element_t<1, aeafa>;
+    //using oaine3 = std::tuple_element_t<2, aeafa>;
+    //using oaine4 = std::tuple_element_t<3, aeafa>;
+
+    // 
+    // c generate -> give to next
+    // 
+    // c <- [1..5], d <- [1..c]
+    // 1, 1
+    // 2, 1
+    // 2, 2
+    // 3, 1
+    // 3, 2
+    // 3, 3
 
     // Container  - 
     // Alias      - 
