@@ -149,13 +149,13 @@ namespace kaixo {
     template<class Ty> concept var_tuple = specialization<Ty, var_tuple_t>;
     template<class Ty> concept collection = specialization<Ty, std::tuple>;
     template<class Ty> concept has_dependencies = requires () { typename Ty::dependencies; };
-    template<class Ty, class Arg> concept has_add_additional = requires () { typename Ty::template add_additional<Arg>; };
+    template<class Ty, class Arg> concept has_add_additional = requires (Ty ty) { ty.template add_additional<Arg>(); };
     template<class Ty> concept has_definitions = requires () { typename Ty::definitions; };
     template<class Ty, class Arg> concept has_definition_types = requires () { typename Ty::template definition_types<Arg>; };
     template<class Ty> concept container = requires(const std::decay_t<Ty> ty) { { ty.begin() }; { ty.end() }; };
 
     // Get iterator type by checking return type of begin on const ref of type
-    template<class Ty> using iterator_type_t = decltype(std::declval<const std::decay_t<Ty>&>().begin());
+    template<class Ty> using iterator_type_t = decltype(std::declval<std::decay_t<Ty>&>().begin());
 
     // Retrieve certain aspects of list comprehension parts
     template<class> struct get_dependencies { using type = std::tuple<>; };
@@ -215,20 +215,16 @@ namespace kaixo {
         constexpr int execute(auto& vals, auto&) const { vals.set<Var>(Definition::operator()(vals)); return 0; }
     };
 
-    template<class Add, class Ty> struct add_additional { using type = Ty; };
-    template<class Add, has_add_additional<Add> Ty> struct add_additional<Add, Ty> { using type = typename Ty::template add_additional<Add>; };
-    template<class Add, class ...Tys> struct add_additional<Add, std::tuple<Tys...>> { using type = std::tuple<typename add_additional<Add, Tys>::type...>; };
-    template<class Add, class Ty> using add_additional_t = typename add_additional<Add, Ty>::type;
+    template<class Add, has_add_additional<Add> Ty> constexpr auto add_additional_c(Ty& val) { return val.template add_additional<Add>(); }
+    template<class Add, class Ty> requires(!has_add_additional<Ty, Add>) constexpr auto add_additional_c(Ty& val) { return val; }
 
-    template<collection Containers, collection Vars = std::tuple<>, class Additional = named_tuple<>>
-    struct linked_container_t : add_additional_t<Additional, Containers> {
+    template<collection Containers, collection Vars = std::tuple<>>
+    struct linked_container_t : Containers {
         static_assert(std::tuple_size_v<Containers> == std::tuple_size_v<Vars> || std::tuple_size_v<Vars> <= 1,
             "Amount of linked variables is not compatible with the amount of containers.");
 
-        template<class Add> using add_additional = linked_container_t<Containers, Vars, Add>;
-
-        using containers = add_additional_t<Additional, Containers>;
-
+        using containers = Containers;
+        using size_type = std::size_t;
         using definitions = Vars;
         using dependencies = get_dependencies_t<containers>;
         template<class Arg> using definition_types = std::conditional_t<std::tuple_size_v<containers> == std::tuple_size_v<Vars>,
@@ -236,11 +232,20 @@ namespace kaixo {
 
         class iterator {
         public:
+            using iterator_category = std::input_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using size_type = linked_container_t::size_type;
+
             using iterator_data = get_iterator_data_t<containers>;
             iterator_data data;
 
             constexpr iterator() {}
+            constexpr iterator(containers& me, bool e) { e ? end<0>(me) : begin<0>(me); }
             constexpr iterator(const containers& me, bool e) { e ? end<0>(me) : begin<0>(me); }
+            constexpr iterator(const iterator& other) = default;
+            constexpr iterator(iterator&& other) = default;
+            constexpr iterator& operator=(const iterator& other) = default;
+            constexpr iterator& operator=(iterator&& other) = default;
 
             constexpr iterator& operator++() { increment<0>(); return *this; }
 
@@ -249,6 +254,11 @@ namespace kaixo {
             constexpr decltype(auto) operator*() { return value(std::make_index_sequence<std::tuple_size_v<containers>>{}); }
 
         private:
+            template<std::size_t I> constexpr void assign(auto& its) {
+                std::get<I>(data) = std::get<I>(its);
+                if constexpr (I != std::tuple_size_v<containers> -1) assign<I + 1>();
+            }
+
             template<std::size_t I> constexpr void increment() {
                 ++std::get<I>(data);
                 if constexpr (I != std::tuple_size_v<containers> -1) increment<I + 1>();
@@ -260,6 +270,16 @@ namespace kaixo {
             }
 
             template<std::size_t I> constexpr void end(const containers& me) {
+                std::get<I>(data) = std::get<I>(me).end();
+                if constexpr (I != std::tuple_size_v<containers> -1) end<I + 1>(me);
+            }
+
+            template<std::size_t I> constexpr void begin(containers& me) {
+                std::get<I>(data) = std::get<I>(me).begin();
+                if constexpr (I != std::tuple_size_v<containers> -1) begin<I + 1>(me);
+            }
+
+            template<std::size_t I> constexpr void end(containers& me) {
                 std::get<I>(data) = std::get<I>(me).end();
                 if constexpr (I != std::tuple_size_v<containers> -1) end<I + 1>(me);
             }
@@ -277,9 +297,20 @@ namespace kaixo {
 
         using const_iterator = iterator;
 
+        constexpr iterator begin() { return iterator{ *this, false }; }
+        constexpr iterator end() { return iterator{ *this, true }; }
         constexpr iterator begin() const { return iterator{ *this, false }; }
         constexpr iterator end() const { return iterator{ *this, true }; }
-        constexpr void give(auto& vals) const {  }
+
+        template<class Add> constexpr auto add_additional() const {
+            return add_additional_i<Add>(std::make_index_sequence<std::tuple_size_v<Containers>>{});
+        }
+
+        template<class Add, std::size_t ...Is> constexpr auto add_additional_i(std::index_sequence<Is...>) const {
+            return linked_container_t<decltype(std::tuple{ add_additional_c<Add>(std::get<Is>(*(Containers*)this))... }), Vars > {
+                std::tuple{ add_additional_c<Add>(std::get<Is>(*(Containers*)this))... } };
+        }
+
         constexpr void give(auto& vals) { give<0>(vals); }
 
         template<std::size_t I> constexpr auto give(auto& vals) {
@@ -317,6 +348,7 @@ namespace kaixo {
 
         using named_tuple_type = named_tuple_type_c<Parts, Additional>;
         using added_parts = Parts;
+        using result_type = Result;
     };
 
     template<class A, class B>
@@ -335,7 +367,7 @@ namespace kaixo {
         template<class Add> using definition_types = as_tuple_t<decltype(std::declval<Result>()(std::declval<named_tuple_type_c<Parts, std::decay_t<Add>>&>()))>;
 
         template<bool Const>
-        class iterator {
+        class iterator_t {
             constexpr static int BREAK = 1;
             constexpr static int AGAIN = 2;
         public:
@@ -346,36 +378,49 @@ namespace kaixo {
             using size_type = list_comprehension::size_type;
 
             using iterator_data = get_iterator_data_t<added_parts>;
-
             using me_type = std::conditional_t<Const, const list_comprehension*, list_comprehension*>;
 
-            constexpr iterator() {}
-            constexpr iterator(me_type me, bool end) : me(me), end(end) { if (!end) prepare(); }
-            constexpr iterator(iterator&& other) : me(other.me), end(other.end), values(std::move(other.values)), data(std::move(other.data)) {}
-            constexpr iterator(const iterator& other) : me(other.me), end(other.end), values(other.values), data(other.data) {}
-            constexpr iterator& operator=(const iterator& other) {
-                me = other.me;
-                end = other.end;
-                values = other.values;
-                data = other.data;
-                return *this;
-            }
+            constexpr iterator_t() {}
+            constexpr iterator_t(me_type me, bool end) : me(me), end(end) { if (!end) prepare(); }
+            constexpr iterator_t(iterator_t&& other) = default;
+            constexpr iterator_t(const iterator_t& other) = default;
+            constexpr iterator_t& operator=(iterator_t&& other) = default;
+            constexpr iterator_t& operator=(const iterator_t& other) = default;
+
+            //constexpr iterator_t(iterator_t&& other) : me(other.me), end(other.end), values(std::move(other.values)), data(std::move(other.data)) {}
+            //constexpr iterator_t(const iterator_t& other) : me(other.me), end(other.end), values(other.values), data(other.data) {}
+            //
+            //constexpr iterator_t& operator=(iterator_t&& other) {
+            //    me = other.me; 
+            //    end = other.end; 
+            //    values.assign(std::move(other.values));
+            //    data = std::move(other.data);
+            //    return *this;
+            //}
+
+            //constexpr iterator_t& operator=(const iterator_t& other) {
+            //    me = other.me;
+            //    end = other.end;
+            //    values.assign(other.values);
+            //    data = other.data;
+            //    return *this; 
+            //}
 
             bool end = true;
             me_type me = nullptr;
             named_tuple_type values{};
             iterator_data data{};
 
-            constexpr iterator& operator++() {
+            constexpr iterator_t& operator++() {
                 int _code = 0;
                 do increment<std::tuple_size_v<added_parts> -1>(), _code = execute<0>();
                 while (!(_code & BREAK) && (_code & AGAIN));
                 return *this;
             }
 
-            constexpr bool operator==(const iterator& other) const { return other.data == data && other.end == end || end == true && other.end == true; }
-            constexpr bool operator!=(const iterator& other) const { return !operator==(other); }
-            constexpr decltype(auto) operator*() { return me->result(values); }
+            constexpr bool operator==(const iterator_t& other) const { return other.data == data && other.end == end || end == true && other.end == true; }
+            constexpr bool operator!=(const iterator_t& other) const { return !operator==(other); }
+            constexpr value_type operator*() { return me->result(values); }
 
         private:
             template<std::size_t I> constexpr void increment() {
@@ -427,16 +472,22 @@ namespace kaixo {
             }
         };
 
+        using iterator = iterator_t<false>;
+        using const_iterator = iterator_t<true>;
+
         constexpr void give(auto& vals) { this->additional.assign(vals); }
-        constexpr iterator<false> begin() { return iterator<false>{ this, false }; }
-        constexpr iterator<false> end() { return iterator<false>{ this, true }; }
-        constexpr iterator<true> begin() const { return iterator<true>{ this, false }; }
-        constexpr iterator<true> end() const { return iterator<true>{ this, true }; }
+
+        constexpr iterator begin() { return iterator{ this, false }; }
+        constexpr iterator end() { return iterator{ this, true }; }
+        constexpr const_iterator begin() const { return const_iterator{ this, false }; }
+        constexpr const_iterator end() const { return const_iterator{ this, true }; }
+
         constexpr value_type operator[](size_type index) {
             auto _it = begin();
             while (index--) ++_it;
             return *_it;
         }
+
         constexpr size_type size() {
             auto _it = begin();
             size_type _index = 0;
@@ -450,32 +501,34 @@ namespace kaixo {
     template<class A, class B>
     list_comprehension(list_comprehension_construct<A, B>&&)->list_comprehension<A, B, named_tuple<>>;
 
-    template<expression Result, collection Parts, class Add>
-    struct incomplete_list_comprehension : list_comprehension_construct<Result, Parts, Add> {
+    template<expression Result, collection Parts, class Additional>
+    struct incomplete_list_comprehension : list_comprehension_construct<Result, Parts, Additional> {
 
-        template<class Additional>
-        struct check_add {
+        template<class Add> using definition_types = as_tuple_t<decltype(std::declval<Result>()(std::declval<named_tuple_type_c<Parts, std::decay_t<Additional>>&>()))>;
+        template<class Add> constexpr auto add_additional() {
             using prior_dependencies = tuple_cat_t<get_dependencies_t<Parts>, get_dependencies_t<Result>>;
             using definitions = tuple_cat_t<get_definitions_t<Parts>, get_definitions_t<Additional>, get_definitions_t<Add>>;
             using dependencies = remove_from_t<definitions, prior_dependencies>;
-            using type = std::conditional_t<std::tuple_size_v<dependencies> == 0, // If no more dependencies, go to final lc object
-                list_comprehension<Result, Parts, Additional>, incomplete_list_comprehension<Result, Parts, Additional>>;
+            if constexpr (std::tuple_size_v<dependencies> == 0) {
+                return list_comprehension<Result, Parts, Add>{
+                    list_comprehension_construct<Result, Parts, Add>{
+                        .result = this->result,
+                        .parts = this->parts,
+                    }
+                };
+            }
+            else {
+                return incomplete_list_comprehension<Result, Parts, Add>{
+                    list_comprehension_construct<Result, Parts, Add>{
+                        .result = this->result,
+                        .parts = this->parts,
+                    }
+                };
+            }
         };
-
-        template<class Add> using definition_types = as_tuple_t<decltype(std::declval<Result>()(std::declval<named_tuple_type_c<Parts, std::decay_t<Add>>&>()))>;
-        template<class A> using add_additional = typename check_add<std::decay_t<A>>::type;
 
         constexpr int begin() const { return 0; }
         constexpr int end() const { return 0; }
-
-        template<class A>
-        constexpr operator list_comprehension<Result, Parts, A>() const { 
-            return list_comprehension<Result, Parts, A>{
-                list_comprehension_construct<Result, Parts, A>{
-                    .result = this->result, .parts = this->parts,
-                } 
-            };
-        }
     };
 
     struct inf_t {};
@@ -485,7 +538,7 @@ namespace kaixo {
     class range_t {
     public:
         using dependencies = std::conditional_t<var_type<Var>, std::tuple<Var>, std::tuple<>>;
-        template<class Add> using add_additional = range_t<Ty, Var>;
+        template<class Add> constexpr auto add_additional() { return range_t<Ty, Var>{ *this }; };
 
         constexpr void give(auto& vals) { if constexpr (var_type<Var>) m_End = vals.get<Var>(); }
 
@@ -610,8 +663,7 @@ namespace kaixo {
         template<lc_construct Lc, class Part> constexpr auto operator,(Lc&& lc, Part&& part) {
             return list_comprehension_construct{
                 std::move(lc.result),
-                std::tuple_cat(std::move(lc.parts), std::tuple{ 
-                    add_additional_t<typename std::decay_t<Lc>::named_tuple_type, std::decay_t<Part>>{ std::forward<Part>(part) } })
+                std::tuple_cat(std::move(lc.parts), std::tuple{ add_additional_c<typename Lc::named_tuple_type>(part) })
             };
         }
     }
@@ -626,10 +678,20 @@ namespace kaixo {
     constexpr lc_op lc;
 }
 
+template<class A, class B>
+concept has_thing = requires(A a) {
+    a.template thing<B>();
+};
+
+struct aefaef {
+
+    template<class B> auto thing() {}
+};
 
 #include <vector>
 int main()
 {
+    constexpr auto aeeff = has_thing<aefaef, int>;
 
     using namespace kaixo;
     using namespace kaixo::lc_operators;
@@ -639,13 +701,19 @@ int main()
     constexpr auto c = var<"c">;
     constexpr auto d = var<"d">;
 
-
-    std::vector<std::tuple<int, int>> gaega = lc[(b, a) | a <- range_t{ 0, 6 }, b <- range_t{ 0, a }];
+    //std::vector<std::tuple<int, int>> gaega = lc[(b, a) | a <- range_t{ 0, 6 }, b <- range_t{ 0, a }];
     
-    constexpr auto aionefo = container<decltype(lc[c | c <- range_t{ 0, a }])>;
+    //constexpr auto aionefo = container<decltype(lc[c | c <- range_t{ 0, a }])>;
         //using aoinooe = add_additional_t<decltype(aneoofnia)::named_tuple_type, decltype(aoienfo)>::containers;
 
-    constexpr auto aefioane = lc[b | a <- range_t{ 0, 4 }, b <- lc[c | c <- range_t{ 0, a }]][0];
+
+    std::vector<int> aenfoiae = lc[(c, b) | b <- range_t{ 0, 3 }, c <- lc[a | a <- range_t{ 0, b }]];
+
+    //std::vector<int> aneof = _part3;
+
+
+
+    //auto aefioane = lc[b | a <- range_t{ 0, 4 }, b <- lc[c | c <- range_t{ 0, a }]];
 
    //using oiane1 = std::tuple_element_t<0, aefioane::added_parts>::containers;
    //using oiane2 = std::tuple_element_t<1, aefioane::added_parts>::containers;
