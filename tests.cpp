@@ -71,7 +71,6 @@ int main()
 {
 
     using namespace kaixo;
-    using namespace kaixo::lc_operators;
     using namespace kaixo::lc_functions;
 
     constexpr auto a = var<"a">;
@@ -80,19 +79,16 @@ int main()
     constexpr auto d = var<"d">;
 
 
-    constexpr auto oaineo = b == 2;
-    constexpr auto aoine = named_tuple<std::tuple<var_t<"b">, var_t<"a">>, std::tuple<int, int>>{ { 2, 10 } };
-    constexpr auto foinae = oaineo(aoine);
-    constexpr auto eian = max(a, b)(aoine);
-
     //std::vector<std::tuple<int, int>> gaega = lc[(b, a) | a <- range_t{ 0, 6 }, b <- range_t{ 0, a }];
     
     //constexpr auto aionefo = container<decltype(lc[c | c <- range_t{ 0, a }])>;
         //using aoinooe = add_additional_t<decltype(aneoofnia)::named_tuple_type, decltype(aoienfo)>::containers;
+    
 
+    std::vector<std::tuple<int, int>> aneo1 = lc[(a, b) | a <- range(0, 3), c <<= a * 1, b <- range(0, c), b != 0];
+    std::vector<std::tuple<int, int>> aneo2 = lc[(a, b) | a <- range(0, 3), b <- range(0, a), b != 0];
 
-    std::vector<std::tuple<int, int>> lca = lc[(b, c) | b <- range_t{ 0, 3 }, brk <<= b == 3, c <- lc[a | a <- range_t{ 0, b }]];
-
+    std::vector<std::tuple<int, int>> feoin = lc[(a, b) | a <- range(0, 4), c <<= a * 2, b <- range(fake<int>{}, a, c)];
 
     return 0;
 	//using namespace kaixo;
