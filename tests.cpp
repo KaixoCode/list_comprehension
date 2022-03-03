@@ -78,6 +78,9 @@ int main()
     constexpr auto c = var<"c">;
     constexpr auto d = var<"d">;
     constexpr auto e = var<"e">;
+    constexpr auto x = var<"x">;
+    constexpr auto y = var<"y">;
+    constexpr auto z = var<"z">;
 
 
     //std::vector<std::tuple<int, int>> gaega = lc[(b, a) | a <- range_t{ 0, 6 }, b <- range_t{ 0, a }];
@@ -95,8 +98,48 @@ int main()
 
     // missmatch amount vars and containers returning tuples
 
-    std::vector<std::tuple<int, std::tuple<int, int>>> fae = lc[(a, b) | a <- range(0, 4), b <- lc[(d, e) | d <- range(0, a), e <- range(0, a)]];
+    //std::vector<std::tuple<int, std::tuple<int, int>>> fae = lc[(a, b) | a <- range(0, 4), b <- lc[(d, e) | d <- range(0, a), e <- range(0, a)]];
 
+
+    std::vector<int> aoao = lc[b | a <- range(0, 3), b <- lc[c | c <- lc[d | d <- range(0, a)]]];
+
+
+    std::vector<std::tuple<int, std::tuple<int, int>>> aeion = lc[(a, b) | (a, b) <- (range(0, 10), lc[(c, d) | (c, d) <- (range(0, 10), range(0, 10))])];
+
+
+    std::vector<std::tuple<int, int, int>> oaimn = 
+        lc[(b, d, e) | a <- ( // a: (*, (*, *))
+                range(0, 10), 
+                lc[x | x <- (range(0, 10), range(0, 10))]
+            ), 
+            (b, c) <<= a, // b: *, c: (*, *)
+            (d, e) <<= c  // d: *, e: * 
+        ];
+
+    constexpr auto make = [=]() {
+        std::vector<std::tuple<int, int, int>> aeonf =
+            lc[a | b <- range(0, 10),
+                   c <- range(0, 10),
+                   d <- range(0, 10),
+                   a <<= (b, c, d)];
+        return aeonf;
+    };
+
+    constexpr auto to_array = []<size_t Size>(auto & fun) {
+        std::array<decltype(fun()), Size> res;
+        auto data = fun();
+        std::copy_n(data.begin(), data.size(), res.begin());
+        return res;
+    };
+
+    constexpr auto size = make().size();
+    constexpr std::array data = to_array.operator()<size>(make);
+
+    std::vector<std::tuple<int, int, int>> aeonf = 
+        lc[a | b <- range(0, 100), 
+               c <- range(0, 100), 
+               d <- range(0, 100), 
+               a <<= (b, c, d)];
 
     return 0;
 	//using namespace kaixo;
