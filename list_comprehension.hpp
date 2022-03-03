@@ -339,6 +339,11 @@ namespace kaixo {
             constexpr iterator(containers& me, bool e) { e ? end<0>(me) : begin<0>(me); }
             constexpr iterator(const containers& me, bool e) { e ? end<0>(me) : begin<0>(me); }
 
+            constexpr iterator(iterator&&) = default;
+            constexpr iterator(const iterator&) = default;
+            constexpr iterator& operator=(iterator&&) = default;
+            constexpr iterator& operator=(const iterator&) = default;
+
             constexpr iterator& operator++() { increment<0>(); return *this; }
 
             constexpr bool operator==(const iterator& other) const { return equal<0>(other); }
@@ -398,6 +403,10 @@ namespace kaixo {
             };
         }
 
+        constexpr void give(auto& vals) const {
+            static_assert(std::tuple_size_v<dependencies> == 0, 
+                "Can only call const give if containers have no dependencies");
+        }
         constexpr void give(auto& vals) { give<0>(vals); }
 
         template<std::size_t I> constexpr auto give(auto& vals) {
@@ -472,6 +481,11 @@ namespace kaixo {
 
             constexpr iterator_t() {}
             constexpr iterator_t(me_type me, bool end) : me(me), end(end) { if (!end) prepare(); }
+            
+            constexpr iterator_t(iterator_t&&) = default;
+            constexpr iterator_t(const iterator_t&) = default;
+            constexpr iterator_t& operator=(iterator_t&&) = default;
+            constexpr iterator_t& operator=(const iterator_t&) = default;
 
             constexpr iterator_t& operator++() {
                 int _code = 0; // Increment until code != again, or code == break
@@ -487,7 +501,11 @@ namespace kaixo {
                     || other.data == data && other.end == end;
             }
 
-            constexpr value_type operator*() { return me->result(values); }
+            constexpr value_type operator*() { 
+                // Throw at compiletime if access past end
+                if (std::is_constant_evaluated() && end) throw;
+                return me->result(values);
+            }
 
         private:
             bool end = true;
@@ -578,6 +596,13 @@ namespace kaixo {
         constexpr iterator end() { return iterator{ this, true }; }
         constexpr const_iterator begin() const { return const_iterator{ this, false }; }
         constexpr const_iterator end() const { return const_iterator{ this, true }; }
+
+        // Add index operator only for constexpr, as it's not optimal
+        consteval decltype(auto) operator[](size_type index) const { 
+            auto _it = begin();
+            while (index--) ++_it; 
+            return *_it; 
+        }
 
         constexpr void give(auto& vals) { this->additional.assign(vals); }
 
@@ -803,6 +828,7 @@ namespace kaixo {
         constexpr iterator begin() const { return iterator{ m_Start }; }
         constexpr iterator end() const { return iterator{ m_End + 1 }; }
         constexpr size_type size() const { return m_End - m_Start; }
+
         constexpr Ty operator[](size_type index) const { return m_Start + static_cast<Ty>(index); }
 
     private:

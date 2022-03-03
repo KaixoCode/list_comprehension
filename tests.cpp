@@ -89,6 +89,11 @@ int main()
     std::vector<std::tuple<int, int>> aneo2 = lc[(a, b) | a <- range(0, 3), b <- range(0, a), b != 0];
 
     std::vector<std::tuple<int, int>> feoin = lc[(a, b) | a <- range(0, 4), c <<= a * 2, b <- range(fake<int>{}, a, c)];
+    
+    std::vector<std::tuple<int, int>> faefa = lc[(a, b) | a <- range(0, 4), c <<= a * 2, b <- range(fake<int>{}, a, c)];
+
+    constexpr auto ani = lc[(a, b) | a <- range(0, 10), b <- range(0, 10)];
+    constexpr auto aoin = ani[121];
 
     return 0;
 	//using namespace kaixo;
