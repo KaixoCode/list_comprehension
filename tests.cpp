@@ -77,6 +77,7 @@ int main()
     constexpr auto b = var<"b">;
     constexpr auto c = var<"c">;
     constexpr auto d = var<"d">;
+    constexpr auto e = var<"e">;
 
 
     //std::vector<std::tuple<int, int>> gaega = lc[(b, a) | a <- range_t{ 0, 6 }, b <- range_t{ 0, a }];
@@ -92,8 +93,10 @@ int main()
     
     std::vector<std::tuple<int, int>> faefa = lc[(a, b) | a <- range(0, 4), c <<= a * 2, b <- range(fake<int>{}, a, c)];
 
-    constexpr auto ani = lc[(a, b) | a <- range(0, 10), b <- range(0, 10)];
-    constexpr auto aoin = ani[121];
+    // missmatch amount vars and containers returning tuples
+
+    std::vector<std::tuple<int, std::tuple<int, int>>> fae = lc[(a, b) | a <- range(0, 4), b <- lc[(d, e) | d <- range(0, a), e <- range(0, a)]];
+
 
     return 0;
 	//using namespace kaixo;
