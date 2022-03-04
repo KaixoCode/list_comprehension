@@ -90,8 +90,7 @@ int main()
     constexpr static auto key = var<"key">;
     constexpr static auto value = var<"value">;
 
-
-    std::vector r1 = lc[a | a <- range(0, 10)];
+    std::vector<std::vector<int>> r1 = lc[lc[x | x <- range(0, a)] | a <- range(0, 10)];
 
     //std::vector r1 = lc[(a, b, c) | c <- range(1, 11), b <- range(1, c), a <- range(1, b), a*a + b*b == c*c];
     //std::vector<char> chars{ 'a', 'b', 'c' };

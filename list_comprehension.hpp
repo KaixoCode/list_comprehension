@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <initializer_list>
 
 namespace kaixo {
     /*
@@ -656,7 +657,7 @@ namespace kaixo {
 
         constexpr inline void give(auto& vals) { this->additional.assign(vals); }
 
-        template<container Ty> constexpr operator Ty() { return Ty{ begin(), end() }; }
+        template<container Ty> requires (!specialization<Ty, std::initializer_list>) constexpr operator Ty() { return Ty{ begin(), end() }; }
     };
 
     template<class A, class B>
@@ -670,7 +671,7 @@ namespace kaixo {
 
         // Define the give_dependencies, if complete now, it will return the final
         // and complete list comprehension object, otherwise another incomplete instance.
-        template<class Add> constexpr inline auto give_dependencies() {
+        template<class Add> constexpr inline auto give_dependencies() const {
             using prior_dependencies = tuple_cat_t<get_dependencies_t<Parts>, get_dependencies_t<Result>>;
             using definitions = tuple_cat_t<get_definitions_t<Parts>, get_definitions_t<Add>>;
             using dependencies = remove_from_t<definitions, prior_dependencies>;
@@ -689,7 +690,7 @@ namespace kaixo {
         };
 
         template<class Add, std::size_t ...Is> 
-        constexpr inline auto give_dependencies_i(std::index_sequence<Is...>) {
+        constexpr inline auto give_dependencies_i(std::index_sequence<Is...>) const {
             return std::tuple{ kaixo::give_dependencies<Add>(std::get<Is>(this->parts))... };
         }
 
@@ -740,6 +741,20 @@ namespace kaixo {
         template<class T, expression Ty> 
         constexpr inline decltype(auto) use(T& vals, Ty&& expr) {
             return expr(vals); 
+        }
+
+        template<class T, container Ty>
+        constexpr inline decltype(auto) use(T& vals, Ty&& cont) {
+            if constexpr (has_dependencies<std::decay_t<Ty>>) {
+                auto res = cont.template give_dependencies<std::decay_t<T>>();
+                if constexpr (std::tuple_size_v<get_dependencies_t<decltype(res)>> != 0)
+                    return std::forward<Ty>(cont);
+                else {
+                    res.give(vals);
+                    return res;
+                }
+            }
+            else return std::forward<Ty>(cont);
         }
 
         template<class T, class Ty>
@@ -925,8 +940,6 @@ namespace kaixo {
             : m_Start(std::numeric_limits<Ty>::min()), m_End(b) {}
         constexpr range(const Ty& a, inf_t) 
             : m_Start(a), m_End(std::numeric_limits<Ty>::max() - 1) {}
-
-        constexpr ~range() { std::cout << "destroy\n"; }
 
         class iterator {
         public:
