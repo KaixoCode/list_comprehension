@@ -238,9 +238,9 @@ namespace kaixo {
     // it can infer type information using these dependencies. If it doesn't define this
     // function, it will simply return itself (copy, as it'll be stored like this).
     template<class Add, has_give_dependencies<Add> Ty> 
-    constexpr decltype(auto) give_dependencies(Ty& val) { return val.template give_dependencies<Add>(); }
+    constexpr inline decltype(auto) give_dependencies(Ty& val) { return val.template give_dependencies<Add>(); }
     template<class Add, class Ty> requires(!has_give_dependencies<Ty, Add>) 
-    constexpr Ty give_dependencies(Ty& val) { return val; }
+    constexpr inline Ty give_dependencies(Ty& val) { return val; }
 
     // Var tuple, lists all nested definitions and dependencies
     template<var_type ...As> struct var_tuple_t {
@@ -259,22 +259,22 @@ namespace kaixo {
         template<var_type Var> using definition_type = std::tuple_element_t<tuple_index<Var, Vars>, Types>;
 
         template<class T, var_type ...V> 
-        constexpr void assign(const named_tuple<std::tuple<V...>, T>& vals) { 
+        constexpr inline void assign(const named_tuple<std::tuple<V...>, T>& vals) {
             (set<V>(vals.get<V>()), ...);
         }
 
         template<in_tuple<Vars> Var>
-        constexpr decltype(auto) get() const { 
+        constexpr inline decltype(auto) get() const {
             return std::get<tuple_index<Var, Vars>>(*this); 
         }
 
         template<in_tuple<Vars> Var, class Ty> 
-        constexpr void set(Ty&& val) {
+        constexpr inline void set(Ty&& val) {
             std::get<tuple_index<Var, Vars>>(*this) = std::forward<Ty>(val);
         }
 
         template<not_in_tuple<Vars> Var, class Ty> 
-        constexpr void set(Ty&&) {} // Empty overload, in case var isn't in here.
+        constexpr inline void set(Ty&&) {} // Empty overload, in case var isn't in here.
     };
     
     // Expression type, practically wrapper for lambda, but keeps track of dependencies
@@ -283,7 +283,7 @@ namespace kaixo {
 
         // This execute is for list comprehension constraints, as an expression as 
         // a standalone part in a comprehension object acts as one.
-        constexpr int execute(auto& vals, auto&) const { 
+        constexpr inline int execute(auto& vals, auto&) const {
             return Lambda::operator()(vals) // If expression passes
                 ? ReturnCode::NONE   // Continue iteration like normal
                 : ReturnCode::AGAIN; // otherwise, skip current values and iterate again
@@ -297,7 +297,7 @@ namespace kaixo {
     template<expression Definition> struct break_condition_t : Definition {
         using dependencies = get_dependencies_t<Definition>;
 
-        constexpr int execute(auto& vals, auto&) const { 
+        constexpr inline int execute(auto& vals, auto&) const {
             return Definition::operator()(vals) // If breaking condition passes
                 ? ReturnCode::BREAK // Break iteration
                 : ReturnCode::NONE; // otherwise continue iteration like normal
@@ -313,7 +313,7 @@ namespace kaixo {
         template<class Arg> using definition_types = // Type is result of expression
             std::tuple<decltype(std::declval<Definition>()(std::declval<Arg&>()))>;
 
-        constexpr int execute(auto& vals, auto&) const { 
+        constexpr inline int execute(auto& vals, auto&) const {
             vals.set<Var>(Definition::operator()(vals)); 
             return ReturnCode::NONE; // Resume normal iteration
         }
@@ -325,7 +325,7 @@ namespace kaixo {
         template<class Arg> using definition_types =
             as_tuple_t<decltype(std::declval<Definition>()(std::declval<Arg&>()))>;
 
-        constexpr int execute(auto& vals, auto&) const {
+        constexpr inline int execute(auto& vals, auto&) const {
             using named_tuple_type = named_tuple<definitions, 
                 definition_types<std::decay_t<decltype(vals)>>>;
             vals.assign(named_tuple_type{ Definition::operator()(vals) });
@@ -398,27 +398,27 @@ namespace kaixo {
             }
 
         private:
-            template<std::size_t I> constexpr void increment() {
+            template<std::size_t I> constexpr inline void increment() {
                 ++std::get<I>(data);
                 if constexpr (I != std::tuple_size_v<containers> -1) increment<I + 1>();
             }
 
-            template<std::size_t I> constexpr void begin(auto& me) {
+            template<std::size_t I> constexpr inline void begin(auto& me) {
                 std::get<I>(data) = std::get<I>(me).begin();
                 if constexpr (I != std::tuple_size_v<containers> -1) begin<I + 1>(me);
             }
 
-            template<std::size_t I> constexpr void end(auto& me) {
+            template<std::size_t I> constexpr inline void end(auto& me) {
                 std::get<I>(data) = std::get<I>(me).end();
                 if constexpr (I != std::tuple_size_v<containers> -1) end<I + 1>(me);
             }
 
-            template<std::size_t I> constexpr bool equal(const iterator& other) const {
+            template<std::size_t I> constexpr inline bool equal(const iterator& other) const {
                 if constexpr (I == std::tuple_size_v<containers>) return false;
                 else return std::get<I>(data) == std::get<I>(other.data) || equal<I + 1>(other);
             }
 
-            template<std::size_t ...Is> constexpr auto value(std::index_sequence<Is...>) {
+            template<std::size_t ...Is> constexpr inline auto value(std::index_sequence<Is...>) {
                 if constexpr (sizeof...(Is) == 1) return *std::get<Is...>(data);
                 else { // If flattened, tuple cat results
                     if constexpr (flattened_one_to_one)
@@ -430,17 +430,17 @@ namespace kaixo {
 
         using const_iterator = iterator;
 
-        constexpr iterator begin() { return iterator{ *this, false }; }
-        constexpr iterator end() { return iterator{ *this, true }; }
-        constexpr iterator begin() const { return iterator{ *this, false }; }
-        constexpr iterator end() const { return iterator{ *this, true }; }
+        constexpr inline iterator begin() { return iterator{ *this, false }; }
+        constexpr inline iterator end() { return iterator{ *this, true }; }
+        constexpr inline iterator begin() const { return iterator{ *this, false }; }
+        constexpr inline iterator end() const { return iterator{ *this, true }; }
 
-        template<class Add> constexpr auto give_dependencies() const {
+        template<class Add> constexpr inline auto give_dependencies() const {
             return give_dependencies_i<Add>(std::make_index_sequence<std::tuple_size_v<Containers>>{});
         }
 
         template<class Add, std::size_t ...Is> 
-        constexpr auto give_dependencies_i(std::index_sequence<Is...>) const {
+        constexpr inline auto give_dependencies_i(std::index_sequence<Is...>) const {
             
             // Get the type of the new tuple of containers after giving their dependencies
             using with_added = decltype(std::tuple{ 
@@ -452,13 +452,13 @@ namespace kaixo {
             };
         }
 
-        constexpr void give(auto& vals) const {
+        constexpr inline void give(auto& vals) const {
             static_assert(std::tuple_size_v<dependencies> == 0, 
                 "Can only evaluate if containers have no dependencies");
         }
-        constexpr void give(auto& vals) { give<0>(vals); }
+        constexpr inline void give(auto& vals) { give<0>(vals); }
 
-        template<std::size_t I> constexpr auto give(auto& vals) {
+        template<std::size_t I> constexpr inline auto give(auto& vals) {
             using type = std::tuple_element_t<I, containers>;
             // If a container has dependencies, it will be given the current values
             if constexpr (has_dependencies<type>) std::get<I>(*this).give(vals);
@@ -545,7 +545,7 @@ namespace kaixo {
                     || other.end == end && other.data == data;
             }
 
-            constexpr value_type operator*() { 
+            constexpr value_type operator*() {
                 // Throw at compiletime if access past end
                 if (std::is_constant_evaluated() && end) throw;
                 return me->result(values);
@@ -570,7 +570,7 @@ namespace kaixo {
             //                  |     set to begin
             //                  |>>>> execute till start
             // This way, only executables that rely on changed values will be executed.
-            template<std::size_t I> constexpr void increment() {
+            template<std::size_t I> constexpr inline void increment() {
                 using type = std::tuple_element_t<I, Parts>;
                 if constexpr (linked_container<type>) { // Only increment if container
                     auto& _part = std::get<I>(me->parts);
@@ -600,7 +600,7 @@ namespace kaixo {
             }
 
             // Will execute recursively until it hits a container, or the end.
-            template<std::size_t I> constexpr int execute() {
+            template<std::size_t I> constexpr inline int execute() {
                 using type = std::tuple_element_t<I, Parts>;
                 if constexpr (!linked_container<type>) { // containers don't execute anything
                     int _code = 0;
@@ -615,7 +615,7 @@ namespace kaixo {
             }
 
             // Recursively give initial values
-            template<std::size_t I> constexpr int begin() {
+            template<std::size_t I> constexpr inline int begin() {
                 using type = std::tuple_element_t<I, Parts>;
                 int _code = 0;
                 auto& _part = std::get<I>(me->parts);
@@ -631,7 +631,7 @@ namespace kaixo {
                 else return _code;
             }
 
-            constexpr void prepare() {
+            constexpr inline void prepare() {
                 values.assign(me->additional);
                 int _code = begin<0>(); // Set iterators to begin
                 if (!(_code & ReturnCode::BREAK) && (_code & ReturnCode::AGAIN)) 
@@ -642,10 +642,10 @@ namespace kaixo {
         using iterator = iterator_t<false>;
         using const_iterator = iterator_t<true>;
 
-        constexpr iterator begin() { return iterator{ this, false }; }
-        constexpr iterator end() { return iterator{ this, true }; }
-        constexpr const_iterator begin() const { return const_iterator{ this, false }; }
-        constexpr const_iterator end() const { return const_iterator{ this, true }; }
+        constexpr inline iterator begin() { return iterator{ this, false }; }
+        constexpr inline iterator end() { return iterator{ this, true }; }
+        constexpr inline const_iterator begin() const { return const_iterator{ this, false }; }
+        constexpr inline const_iterator end() const { return const_iterator{ this, true }; }
 
         // Add index operator only for constexpr, as it's not optimal
         consteval decltype(auto) operator[](size_type index) const { 
@@ -654,7 +654,7 @@ namespace kaixo {
             return *_it; 
         }
 
-        constexpr void give(auto& vals) { this->additional.assign(vals); }
+        constexpr inline void give(auto& vals) { this->additional.assign(vals); }
 
         template<container Ty> constexpr operator Ty() { return Ty{ begin(), end() }; }
     };
@@ -670,7 +670,7 @@ namespace kaixo {
 
         // Define the give_dependencies, if complete now, it will return the final
         // and complete list comprehension object, otherwise another incomplete instance.
-        template<class Add> constexpr auto give_dependencies() {
+        template<class Add> constexpr inline auto give_dependencies() {
             using prior_dependencies = tuple_cat_t<get_dependencies_t<Parts>, get_dependencies_t<Result>>;
             using definitions = tuple_cat_t<get_definitions_t<Parts>, get_definitions_t<Add>>;
             using dependencies = remove_from_t<definitions, prior_dependencies>;
@@ -689,7 +689,7 @@ namespace kaixo {
         };
 
         template<class Add, std::size_t ...Is> 
-        constexpr auto give_dependencies_i(std::index_sequence<Is...>) {
+        constexpr inline auto give_dependencies_i(std::index_sequence<Is...>) {
             return std::tuple{ kaixo::give_dependencies<Add>(std::get<Is>(this->parts))... };
         }
 
@@ -702,7 +702,7 @@ namespace kaixo {
         using dependencies = std::tuple<Var>;
         using value_type = typename Container::value_type;
         
-        constexpr void give(auto& vals) {
+        constexpr inline void give(auto& vals) {
             Container::operator=(vals.get<Var>());
         }
 
@@ -715,7 +715,7 @@ namespace kaixo {
         using dependencies = std::tuple<Var>;
         template<class Add> using definition_types = get_definition_types_t<Add, typename Add::template definition_type<Var>>;
 
-        template<class Add> constexpr auto give_dependencies() const {
+        template<class Add> constexpr inline auto give_dependencies() const {
             return var_container<Var, typename Add::template definition_type<Var>>{};
         }
 
@@ -728,22 +728,22 @@ namespace kaixo {
 
         // Overloads for using several type groups in expressions
         template<class T, var_type ...Ty> 
-        constexpr decltype(auto) use(T& vals, const var_tuple_t<Ty...>&) { 
-            return std::tuple{ vals.get<std::decay_t<Ty>>()... }; 
+        constexpr inline decltype(auto) use(T& vals, const var_tuple_t<Ty...>&) {
+            return std::tuple{ vals.get<std::decay_t<Ty>>()... };
         }
 
         template<class T, var_type Ty> 
-        constexpr decltype(auto) use(T& vals, Ty&&) {
-            return vals.get<std::decay_t<Ty>>(); 
+        constexpr inline decltype(auto) use(T& vals, Ty&&) {
+            return vals.get<std::decay_t<Ty>>();
         }
 
         template<class T, expression Ty> 
-        constexpr decltype(auto) use(T& vals, Ty&& expr) {
+        constexpr inline decltype(auto) use(T& vals, Ty&& expr) {
             return expr(vals); 
         }
 
         template<class T, class Ty>
-        constexpr decltype(auto) use(T& vals, Ty&& val) {
+        constexpr inline decltype(auto) use(T& vals, Ty&& val) {
             return std::forward<Ty>(val);
         }
 
@@ -751,12 +751,12 @@ namespace kaixo {
             && !specialization<Ty, break_condition_t> && !specialization<Ty, var_unpack>;
         template<class Ty> concept either_op_arg = var_type<std::decay_t<Ty>> || expression<Ty>;
 
-#define create_op(op)                                                                                   \
-        template<valid_op_arg A, valid_op_arg B> constexpr decltype(auto) operator op(A&& a, B&& b)     \
-            requires (either_op_arg<A> || either_op_arg<B>){                                            \
-            return expression_t{ [a = std::forward<A>(a), b = std::forward<B>(b)]<class Ty>(Ty& vals) { \
-                return use(vals, a) op use(vals, b); },                                                 \
-                fake<tuple_cat_t<get_dependencies_t<A>, get_dependencies_t<B>>>{} };                    \
+#define create_op(op)                                                                                      \
+        template<valid_op_arg A, valid_op_arg B> constexpr inline decltype(auto) operator op(A&& a, B&& b) \
+            requires (either_op_arg<A> || either_op_arg<B>){                                               \
+            return expression_t{ [a = std::forward<A>(a), b = std::forward<B>(b)]<class Ty>(Ty& vals) {    \
+                return use(vals, a) op use(vals, b); },                                                    \
+                fake<tuple_cat_t<get_dependencies_t<A>, get_dependencies_t<B>>>{} };                       \
         }
 
         create_op(+) create_op(-) create_op(*) create_op(/ ) create_op(== ) create_op(!= );
@@ -764,7 +764,7 @@ namespace kaixo {
         create_op(<< ) create_op(>> ) create_op(&) create_op(| ) create_op(&&) create_op(|| );
 
 #define create_uop(op)                                                                   \
-        template<either_op_arg A> constexpr decltype(auto) operator op(A&& a) {          \
+        template<either_op_arg A> constexpr inline decltype(auto) operator op(A&& a) {   \
             return expression_t{ [a = std::forward<A>(a)]<class Ty>(Ty& vals) {          \
                 return op use(vals, a); }, fake<tuple_cat_t<get_dependencies_t<A>>>{} }; \
         }
@@ -776,48 +776,49 @@ namespace kaixo {
 
         // Construct tuple of variables
         template<var_type A, var_type B> 
-        constexpr var_tuple_t<A, B> operator,(A&, B&) { return {}; }
+        constexpr inline var_tuple_t<A, B> operator,(A&, B&) { return {}; }
         template<var_type A, var_type ...B>
-        constexpr var_tuple_t<A, B...> operator,(A&, var_tuple_t<B...>&&) { return {}; }
+        constexpr inline var_tuple_t<A, B...> operator,(A&, var_tuple_t<B...>&&) { return {}; }
         template<var_type ...A, var_type B> 
-        constexpr var_tuple_t<A..., B> operator,(var_tuple_t<A...>&&, B&) { return {}; }
+        constexpr inline var_tuple_t<A..., B> operator,(var_tuple_t<A...>&&, B&) { return {}; }
         template<var_type ...A, var_type ...B> 
-        constexpr var_tuple_t<A..., B...> operator,(var_tuple_t<A...>&&, var_tuple_t<B...>&&) { return {}; }
+        constexpr inline var_tuple_t<A..., B...> operator,(var_tuple_t<A...>&&, var_tuple_t<B...>&&) { return {}; }
 
         // Construct tuple of expressions/variables
-        template<valid_result_arg A, valid_result_arg B> constexpr auto operator,(A&& a, B&& b) {
+        template<valid_result_arg A, valid_result_arg B> constexpr inline auto operator,(A&& a, B&& b) {
             return expression_t{ [a = std::forward<A>(a), b = std::forward<B>(b)] <class Ty>(Ty& vals) { 
                 return std::tuple_cat(std::tuple{ use(vals, a) }, std::tuple{ use(vals, b) }); },
                 fake<tuple_cat_t<get_dependencies_t<A>, get_dependencies_t<B>>>{} };
         }
 
         // Chain containers together for parallel iteration
-        template<container A, container B> constexpr auto operator,(A&& a, B&& b) {
+        template<container A, container B> constexpr inline auto operator,(A&& a, B&& b) {
             return linked_container_t<tuple_cat_t<as_tuple_t<A>, as_tuple_t<B>>, std::tuple<>>{
                 std::tuple_cat(as_tuple_t<A>{ std::forward<A>(a) }, as_tuple_t<B>{ std::forward<B>(b) }) };
         }
 
         // Convert single container into linked container, or forward linked container
-        template<container A> constexpr auto operator-(A&& a) {
+        template<container A> constexpr inline auto operator-(A&& a) {
             if constexpr (linked_container<A>) return std::forward<A>(a);
             else return linked_container_t<std::tuple<A>, std::tuple<>>{ std::forward<A>(a) };
         }
 
-        template<var_type A> constexpr auto operator-(A&) {
+        template<var_type A> constexpr inline auto operator-(A&) {
             return linked_container_t<std::tuple<incomplete_var_container<std::decay_t<A>>>, std::tuple<>>{};
         }
 
         // Link variables to linked container
-        template<var_type A, linked_container B> constexpr auto operator<(A&, B&& b) {
+        template<var_type A, linked_container B> constexpr inline auto operator<(A&, B&& b) {
             return linked_container_t<typename B::containers, get_definitions_t<A>>{ std::forward<B>(b) };
         }
 
-        template<var_tuple A, linked_container B> constexpr auto operator<(A&&, B&& b) {
+        template<var_tuple A, linked_container B> constexpr inline auto operator<(A&&, B&& b) {
             return linked_container_t<typename B::containers, get_definitions_t<A>>{ std::forward<B>(b) };
         }
 
         // Start of list comprehension, combine result expression with a part
-        template<valid_result_arg A, class Part> constexpr auto operator|(A&& a, Part&& part) {
+        template<class Ty> concept valid_starter = valid_result_arg<Ty> || (container<Ty> && has_dependencies<Ty>);
+        template<valid_starter A, class Part> constexpr inline auto operator|(A&& a, Part&& part) {
             return list_comprehension_construct{
                 expression_t{ [a = std::forward<A>(a)] <class Ty>(Ty & vals) {
                 return use(vals, a); }, fake<get_dependencies_t<A>>{} },
@@ -825,42 +826,42 @@ namespace kaixo {
         }
 
         // Add parts to the list comprehension construct
-        template<lc_construct Lc, class Part> constexpr auto operator,(Lc&& lc, Part&& part) {
+        template<lc_construct Lc, class Part> constexpr inline auto operator,(Lc&& lc, Part&& part) {
             return list_comprehension_construct{
                 std::move(lc.result),
                 std::tuple_cat(std::move(lc.parts), std::tuple{ std::forward<Part>(part) })
             };
         }
 
-        template<var_type A, expression B> constexpr auto operator<<=(A&, B&& b) {
+        template<var_type A, expression B> constexpr inline auto operator<<=(A&, B&& b) {
             return var_definition{ std::forward<B>(b), A{} };
         }
 
-        template<var_type A, var_tuple B> constexpr auto operator<<=(A&, B&& b) {
+        template<var_type A, var_tuple B> constexpr inline auto operator<<=(A&, B&& b) {
             return var_definition{
                 expression_t{ [b = std::forward<B>(b)] (auto& vals) { return use(vals, b); },
                 fake<get_dependencies_t<B>>{} }, A{} };
         }
 
-        template<var_tuple A, expression B> constexpr auto operator<<=(A&&, B&& b) {
+        template<var_tuple A, expression B> constexpr inline auto operator<<=(A&&, B&& b) {
             return var_unpack{ std::forward<B>(b), A{} };
         }
         
-        template<var_tuple A, var_type B> constexpr auto operator<<=(A&&, B&) {
+        template<var_tuple A, var_type B> constexpr inline auto operator<<=(A&&, B&) {
             return var_unpack{ 
                 expression_t{ [](auto& vals) { return vals.get<std::decay_t<B>>(); }, 
                 fake<get_dependencies_t<B>>{} }, A{} };
         }
 
         struct brk_t {}; constexpr brk_t brk;
-        template<expression B> constexpr auto operator<<=(const brk_t&, B&& b) {
+        template<expression B> constexpr inline auto operator<<=(const brk_t&, B&& b) {
             return break_condition_t{ std::forward<B>(b) };
         }
     }
 
     // List comprehension [] operator
     struct lc_op {
-        template<lc_construct Lc> constexpr auto operator[](Lc&& lc) const {
+        template<lc_construct Lc> constexpr inline auto operator[](Lc&& lc) const {
             // If the list comprehension still has dependencies, forward it as a construct
             if constexpr (std::tuple_size_v<typename Lc::dependencies> != 0)
                 return incomplete_list_comprehension{ std::forward<Lc>(lc) };
@@ -875,7 +876,7 @@ namespace kaixo {
         }
 
         template<class Add, std::size_t ...Is>
-        constexpr auto give_dependencies_i(auto& parts, std::index_sequence<Is...>) const {
+        constexpr inline auto give_dependencies_i(auto& parts, std::index_sequence<Is...>) const {
             return std::tuple{ kaixo::give_dependencies<Add>(std::get<Is>(parts))... };
         }
     };
@@ -894,7 +895,7 @@ namespace kaixo {
             std::conditional_t<var_type<Var1>, std::tuple<Var1>, 
             std::conditional_t<var_type<Var2>, std::tuple<Var2>, std::tuple<>>>>;
         
-        template<class Add> constexpr auto give_dependencies() { 
+        template<class Add> constexpr inline auto give_dependencies() {
             if constexpr (var_type<Var1> && var_type<Var2>)
                 return range<typename Add::template definition_type<Var1>, Var1, Var2>{};
             else if constexpr (var_type<Var1> || var_type<Var2>)
@@ -902,7 +903,7 @@ namespace kaixo {
             else return range<Ty>{ m_Start, m_End };
         };
 
-        constexpr void give(auto& vals) {
+        constexpr inline void give(auto& vals) {
             if constexpr (var_type<Var1>) m_Start = vals.get<Var1>();
             if constexpr (var_type<Var2>) m_End = vals.get<Var2>();
         }
@@ -911,22 +912,20 @@ namespace kaixo {
         using size_type = std::size_t;
 
         constexpr range() 
-            : m_Start(), m_End() {std::cout << "create\n"; }
+            : m_Start(), m_End() {}
         constexpr range(const Ty& a) 
-            : m_Start(), m_End(a) {std::cout << "create\n";}
+            : m_Start(), m_End(a) {}
         constexpr range(const Ty& a, const Ty& b) 
-            : m_Start(a), m_End(b < a ? a : b) { std::cout << "create\n"; }
+            : m_Start(a), m_End(b < a ? a : b) {}
         constexpr range(const Ty& a, const Var2&) 
-            : m_Start(a), m_End(std::numeric_limits<Ty>::max() - 1) {std::cout << "create\n";}
+            : m_Start(a), m_End(std::numeric_limits<Ty>::max() - 1) {}
         constexpr range(const Var1& a, const Var2&) 
-            : m_Start(std::numeric_limits<Ty>::min()), m_End(std::numeric_limits<Ty>::max() - 1) {std::cout << "create\n";}
+            : m_Start(std::numeric_limits<Ty>::min()), m_End(std::numeric_limits<Ty>::max() - 1) {}
         constexpr range(const Var1& a, const Ty& b) 
-            : m_Start(std::numeric_limits<Ty>::min()), m_End(b) {std::cout << "create\n";}
+            : m_Start(std::numeric_limits<Ty>::min()), m_End(b) {}
         constexpr range(const Ty& a, inf_t) 
-            : m_Start(a), m_End(std::numeric_limits<Ty>::max() - 1) {std::cout << "create\n";}
+            : m_Start(a), m_End(std::numeric_limits<Ty>::max() - 1) {}
 
-        constexpr range(const range& r) : m_Start(r.m_Start), m_End(r.m_End) { std::cout << "copy\n"; }
-        constexpr range(range&& r) : m_Start(r.m_Start), m_End(r.m_End) { std::cout << "move\n"; }
         constexpr ~range() { std::cout << "destroy\n"; }
 
         class iterator {
