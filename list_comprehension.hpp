@@ -455,7 +455,7 @@ namespace kaixo {
 
         constexpr inline void give(auto& vals) const {
             static_assert(std::tuple_size_v<dependencies> == 0, 
-                "Can only evaluate if containers have no dependencies");
+                "Can only evaluate as const if containers have no dependencies");
         }
         constexpr inline void give(auto& vals) { give<0>(vals); }
 
@@ -590,7 +590,7 @@ namespace kaixo {
                         if constexpr (I != std::tuple_size_v<Parts> -1) {
                             auto _code = execute<I + 1>(); // Execute executables
                             // If break, we're done, if again, increment again, otherwise nothing
-                            if (_code & ReturnCode::BREAK) { end = true; return; }
+                            if (end || _code & ReturnCode::BREAK) { end = true; return; }
                             else if (_code & ReturnCode::AGAIN) continue;
                         }
                         return;
@@ -655,37 +655,39 @@ namespace kaixo {
             return *_it; 
         }
 
+        consteval size_type size() const {
+            auto _it = begin();
+            size_type _index = 0;
+            while (_it != end()) ++_it, ++_index;
+            return _index;
+        }
+
         constexpr inline void give(auto& vals) { this->additional.assign(vals); }
 
-        template<container Ty> requires (!specialization<Ty, std::initializer_list>) constexpr operator Ty() { return Ty{ begin(), end() }; }
+        template<container Ty> requires (!specialization<Ty, std::initializer_list>) 
+        constexpr operator Ty() { return Ty{ begin(), end() }; }
     };
 
     template<class A, class B>
     list_comprehension(list_comprehension_construct<A, B>&&)->list_comprehension<A, B, named_tuple<>>;
 
     // Incomplete list comprehension is created when there's still dependencies
-    template<expression Result, collection Parts, class Additional>
-    struct incomplete_list_comprehension : list_comprehension_construct<Result, Parts, Additional> {
+    template<expression Result, collection Parts>
+    struct incomplete_list_comprehension : list_comprehension_construct<Result, Parts> {
         template<class Add> using definition_types = std::tuple<decltype(
             std::declval<Result>()(std::declval<named_tuple_type_c<Parts, std::decay_t<Add>>&>()))>;
 
         // Define the give_dependencies, if complete now, it will return the final
         // and complete list comprehension object, otherwise another incomplete instance.
         template<class Add> constexpr inline auto give_dependencies() const {
-            using prior_dependencies = tuple_cat_t<get_dependencies_t<Parts>, get_dependencies_t<Result>>;
-            using definitions = tuple_cat_t<get_definitions_t<Parts>, get_definitions_t<Add>>;
-            using dependencies = remove_from_t<definitions, prior_dependencies>;
             using named_tuple_type = named_tuple_type_c<Parts, Add>; // Combine parts with added
             // Recurse down, and give all the parts these new dependencies as well.
             auto _newparts = give_dependencies_i<named_tuple_type>(
                 std::make_index_sequence<std::tuple_size_v<Parts>>{});
-            // Determine what to output, given dependencies
-            using type = std::conditional_t<std::tuple_size_v<dependencies> == 0, 
-                list_comprehension<Result, decltype(_newparts), named_tuple_type>,
-                incomplete_list_comprehension<Result, decltype(_newparts), named_tuple_type>>;
             // Return the selected type, with the new parts
-            return type { list_comprehension_construct<Result, decltype(_newparts), named_tuple_type>{
-                .result = this->result, .parts = std::move(_newparts),
+            return list_comprehension<Result, decltype(_newparts), named_tuple_type> { 
+                list_comprehension_construct<Result, decltype(_newparts), named_tuple_type>{
+                    .result = this->result, .parts = std::move(_newparts),
             } };
         };
 
@@ -714,7 +716,8 @@ namespace kaixo {
     template<var_type Var>
     struct incomplete_var_container {
         using dependencies = std::tuple<Var>;
-        template<class Add> using definition_types = get_definition_types_t<Add, typename Add::template definition_type<Var>>;
+        template<class Add> using definition_types = 
+            get_definition_types_t<Add, typename Add::template definition_type<Var>>;
 
         template<class Add> constexpr inline auto give_dependencies() const {
             return var_container<Var, typename Add::template definition_type<Var>>{};
@@ -753,8 +756,7 @@ namespace kaixo {
                     res.give(vals);
                     return res;
                 }
-            }
-            else return std::forward<Ty>(cont);
+            } else return std::forward<Ty>(cont);
         }
 
         template<class T, class Ty>
@@ -883,9 +885,11 @@ namespace kaixo {
             else { // Otherwise construct the full object
                 using named_tuple_type = named_tuple_type_c<decltype(lc.parts)>;
 
+                // If complete, give the final dependencies to everything
                 return list_comprehension{ list_comprehension_construct {
                     std::move(lc.result),
-                    give_dependencies_i<named_tuple_type>(lc.parts, std::make_index_sequence<std::tuple_size_v<decltype(lc.parts)>>{})
+                    give_dependencies_i<named_tuple_type>(lc.parts, 
+                        std::make_index_sequence<std::tuple_size_v<decltype(lc.parts)>>{})
                 } };
             }
         }
@@ -976,15 +980,20 @@ namespace kaixo {
 
         friend class iterator;
     };
+
+    namespace lc_functions {
+        template<class Ty> concept either_fun_arg = either_op_arg<Ty> || has_dependencies<Ty>;
+        template<class Ty> concept valid_fun_arg = valid_op_arg<Ty> || has_dependencies<Ty>;
+    }
 }
 
 // Define expression overloads for std functions 
-#define lc_std_fun(y, x)                                                                         \
-    template<kaixo::lc_operators::valid_op_arg ...Args>                                          \
-    requires(kaixo::lc_operators::either_op_arg<Args> || ...) constexpr auto x(Args&&... args) { \
-        return kaixo::expression_t{ [...args = std::forward<Args>(args)] (auto& vals) {          \
-            return :: y x(kaixo::lc_operators::use(vals, args)...);                              \
-        }, kaixo::fake<kaixo::tuple_cat_t<kaixo::get_dependencies_t<Args>...>> {} };             \
+#define lc_std_fun(y, x)                                                                          \
+    template<kaixo::lc_functions::valid_fun_arg ...Args>                                          \
+    requires(kaixo::lc_functions::either_fun_arg<Args> || ...) constexpr auto x(Args&&... args) { \
+        return kaixo::expression_t{ [...args = std::forward<Args>(args)] (auto& vals) {           \
+            return :: y x(kaixo::lc_operators::use(vals, args)...);                               \
+        }, kaixo::fake<kaixo::tuple_cat_t<kaixo::get_dependencies_t<Args>...>> {} };              \
     }
 
 #ifndef KAIXO_LC_FUNCTIONAL

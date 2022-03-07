@@ -68,10 +68,7 @@ constexpr auto& operator<<(auto& a, std::tuple<Ty...>& v) {
 
 #include <vector>
 
-namespace std {
-    template<class A> vector(A&&)->vector<typename A::value_type>;    
-    template<class A> vector(A&)->vector<typename A::value_type>;
-}
+
 
 int main()
 {
@@ -90,7 +87,24 @@ int main()
     constexpr static auto key = var<"key">;
     constexpr static auto value = var<"value">;
 
-    std::vector<std::vector<int>> r1 = lc[lc[x | x <- range(0, a)] | a <- range(0, 10)];
+    //std::vector rs10 = lc[a | a <- range(2, inf), size(lc[b | b <- range(1, 20), a % b == 0]) == 20];
+
+
+    std::vector oamep = lc[y | a <- range(0, 5), y <<= 2 * size(lc[b | b <- range(0, a), c <- range(0, a)])];
+
+    //std::vector primes = lc[x | a <- range(1, inf), x <<= a*2-1, size(lc[b | b <- range(2, inf), x % b == 0, brk <<= b > sqrt(x)]) == 0];
+
+    //
+    //int val = 10;
+    //auto rs10 = lc[a | b <- range(0, size), a <<= b + val];
+    //std::vector rs101 = rs10;{ size=109760 }
+    //val = 20;
+    //std::vector rs102 = rs10;
+    
+
+    return 0;
+    
+    //std::vector<std::vector<int>> r0 = lc[lc[x | x <- range(0, a)] | a <- range(0, 10)];
 
     //std::vector r1 = lc[(a, b, c) | c <- range(1, 11), b <- range(1, c), a <- range(1, b), a*a + b*b == c*c];
     //std::vector<char> chars{ 'a', 'b', 'c' };
@@ -104,7 +118,7 @@ int main()
     //std::vector r10 = lc[max(a, b) | (a, b) <- data2];
     //std::vector r14 = lc[x | x <- range(0, inf), brk <<= x == 100];
 
-    //std::vector r15 = lc[lc[y | y <- range(0, inf)] | x <- range(0, inf)];
+    ////std::vector r15 = lc[lc[y | y <- range(0, inf)] | x <- range(0, inf)];
 
 
     //constexpr auto size = 4;
@@ -116,14 +130,5 @@ int main()
     //std::vector rs07 = lc[(b, c) | a <- (range(0, size), range(0, size)), (b, c) <<= a];
     //std::vector rs08 = lc[c | a <- range(0, size), b <- range(0, size), c <<= (a, b)];
     //std::vector rs09 = lc[(b, a) | b <- range(0, size), b % 2 == 0, a <- lc[d | c <- range(0, size), d <<= c * b]];
-    //
-    //int val = 10;
-    //auto rs10 = lc[a | b <- range(0, size), a <<= b + val];
-    //std::vector rs101 = rs10;
-    //val = 20;
-    //std::vector rs102 = rs10;
-    
-
-    return 0;
 
 }
