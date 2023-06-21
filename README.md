@@ -1,5 +1,8 @@
 # list comprehension
- Single header list comprehension in C++! 
+List comprehension in C++! 
+
+Requires my [Type Utils](https://github.com/KaixoCode/type_utils) library to work.
+
 ```cpp
 constexpr auto a = var<"a">;
 constexpr auto b = var<"b">;
