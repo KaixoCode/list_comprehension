@@ -5,8 +5,6 @@ set (CMAKE_CXX_STANDARD 23)
 
 add_subdirectory(libs)
 
-include_directories(${INCLUDES})
-
 option(BUILD_LIST_COMPREHENSION_EXAMPLE "Build the list comprehension example project" false)
 
 if (${BUILD_LIST_COMPREHENSION_EXAMPLE})
