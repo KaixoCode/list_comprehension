@@ -7,6 +7,16 @@ add_subdirectory(libs)
 
 option(BUILD_LIST_COMPREHENSION_EXAMPLE "Build the list comprehension example project" false)
 
+if (TARGET list_comprehension)
+else()
+file(GLOB_RECURSE SOURCE
+  "${list_comprehension_SOURCE_DIR}/include/*.hpp"
+)
+
+add_library(list_comprehension ${SOURCE})
+set_target_properties(list_comprehension PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
 if (${BUILD_LIST_COMPREHENSION_EXAMPLE})
 if (TARGET list_comprehension_example)
 else()
