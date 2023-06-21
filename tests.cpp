@@ -1,4 +1,6 @@
-//#include "list_comprehension.hpp"
+#include "kaixo/list_comprehension.hpp"
+#include "kaixo/overloads.hpp"
+#include "kaixo/range.hpp"
 #include <iostream>
 #include <map>
 #include <array>
@@ -64,33 +66,39 @@ constexpr auto& operator<<(auto& a, std::tuple<Ty...>& v) {
     return a;
 }
 
-#include "list_comprehension.hpp"
+#include "kaixo/list_comprehension.hpp"
 
 #include <vector>
+#include <array>
+
+namespace std {
+    template<class Ty>
+    vector(Ty)->vector<typename Ty::value_type>;
+}
 
 
-
-int main()
-{
+int main() {
 
     using namespace kaixo;
-    using namespace kaixo::lc_functions;
+    using namespace kaixo::overloads;
+    using namespace kaixo::operators;
 
-    constexpr static auto a = var<"a">;
-    constexpr static auto b = var<"b">;
-    constexpr static auto c = var<"c">;
-    constexpr static auto d = var<"d">;
-    constexpr static auto e = var<"e">;
-    constexpr static auto x = var<"x">;
-    constexpr static auto y = var<"y">;
-    constexpr static auto z = var<"z">;
-    constexpr static auto key = var<"key">;
-    constexpr static auto value = var<"value">;
+    constexpr static auto a = var<"a">{};
+    constexpr static auto b = var<"b">{};
+    constexpr static auto c = var<"c">{};
+    constexpr static auto d = var<"d">{};
+    constexpr static auto e = var<"e">{};
+    constexpr static auto x = var<"x">{};
+    constexpr static auto y = var<"y">{};
+    constexpr static auto z = var<"z">{};
+    constexpr static auto key = var<"key">{};
+    constexpr static auto value = var<"value">{};
+
+
+    std::vector res = ((a, b) | a <- range(0, 10), b <- range(0, 10));
 
     //std::vector rs10 = lc[a | a <- range(2, inf), size(lc[b | b <- range(1, 20), a % b == 0]) == 20];
 
-
-    std::vector oamep = lc[y | a <- range(0, 5), y <<= 2 * size(lc[b | b <- range(0, a), c <- range(0, a)])];
 
     //std::vector primes = lc[x | a <- range(1, inf), x <<= a*2-1, size(lc[b | b <- range(2, inf), x % b == 0, brk <<= b > sqrt(x)]) == 0];
 
