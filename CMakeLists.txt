@@ -3,8 +3,6 @@ project (list_comprehension)
 
 set (CMAKE_CXX_STANDARD 23)
 
-add_subdirectory(libs)
-
 option(BUILD_LIST_COMPREHENSION_EXAMPLE "Build the list comprehension example project" false)
 
 if (TARGET list_comprehension)
