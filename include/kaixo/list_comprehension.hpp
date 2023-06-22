@@ -586,11 +586,7 @@ namespace kaixo {
             });
         }
 
-        template<class Self, is_named_value ...Tys>
-        constexpr decltype(auto) operator()(this Self&& self, Tys&& ...vals) {
-            named_tuple tpl{ std::forward<Tys>(vals)... };
-            return std::forward<Self>(self).evaluate(tpl);
-        }
+        KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
     template<class Ty> concept is_lc = specialization<Ty, list_comprehension>;

@@ -17,6 +17,14 @@
 
 namespace kaixo {
 
+    // Simple macro to add the evaluate call operator overload.
+#define KAIXO_EVALUATE_CALL_OPERATOR                                        \
+    template<class Self, is_named_value ...Args>                            \
+    constexpr decltype(auto) operator()(this Self&& self, Args&& ...args) { \
+        named_tuple tpl{ std::forward<Args>(args)... };                     \
+        return std::forward<Self>(self).evaluate(tpl);                      \
+    }
+
     /**
      * Forward as tuple, but only lvalue references are kept, rest is copied.
      * @param ...args arguments
@@ -271,6 +279,8 @@ namespace kaixo {
                 kaixo::evaluate(std::forward<Self>(self).a, tuple),
                 kaixo::evaluate(std::forward<Self>(self).b, tuple));
         }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
     /**
@@ -288,6 +298,8 @@ namespace kaixo {
         constexpr decltype(auto) evaluate(this Self&& self, is_named_tuple auto& tuple) {
             return Op::evaluate(kaixo::evaluate(std::forward<Self>(self).a, tuple));
         }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
     /**
@@ -311,6 +323,8 @@ namespace kaixo {
                 return move_tparams_t<decltype(res), tuple_operation>{ std::move(res) };
             else return res;
         }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
     /**
@@ -325,6 +339,8 @@ namespace kaixo {
         constexpr decltype(auto) evaluate(this Self&& self, is_named_tuple auto& tuple) {
             return tuple_operation<As...>{ std::tuple{ As{}... } }.evaluate(tuple);
         }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
     template<class Ty> concept is_var_tuple = specialization<Ty, var_tuple>;
@@ -360,9 +376,13 @@ namespace kaixo {
 #define KAIXO_BINARY_OPERATOR(name, op)                              \
         struct name {                                                \
             using is_operator = int;                                 \
-            template<class A, class B>                               \
-            constexpr static decltype(auto) evaluate(A&& a, B&& b) { \
-                return a op b;                                       \
+            template<class ...As>                                    \
+            constexpr static decltype(auto) evaluate(As&& ...as) {   \
+                return (as op ...);                                  \
+            }                                                        \
+            template<class ...As>                                    \
+            constexpr decltype(auto) operator()(As&& ...as) {        \
+                return (as op ...);                                  \
             }                                                        \
         };                                                                                             \
                                                                                                        \

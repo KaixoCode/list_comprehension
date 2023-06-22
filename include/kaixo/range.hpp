@@ -17,18 +17,28 @@ namespace kaixo {
      */
     constexpr struct inf_t {} inf{};
 
+    struct _with_increment {};
+
     /**
      * Simple range object, allows for variable
      * dependent, and infinite ranges.
      */
     template<class ...As> struct range;
 
-    template<arithmetic A> range(A, A) -> range<A>;
-    template<arithmetic A> range(A, inf_t) -> range<A, inf_t>;
-    template<is_partial A> range(A, inf_t) -> range<decay_t<A>, inf_t>;
-    template<is_partial A, arithmetic B> range(A, B) -> range<decay_t<A>, B>;
-    template<arithmetic A, is_partial B> range(A, B) -> range<A, decay_t<B>>;
-    template<is_partial A, is_partial B> range(A, B) -> range<decay_t<A>, decay_t<B>>;
+    template<arithmetic A> 
+    range(A, inf_t) -> range<A, inf_t>;
+
+    template<arithmetic A, arithmetic B> 
+    range(A, B) -> range<std::common_type_t<A, B>>;
+
+    template<arithmetic A, arithmetic B, arithmetic C> 
+    range(A, B, C) -> range<_with_increment, std::common_type_t<A, B, C>>;
+
+    template<arithmetic A, arithmetic C> 
+    range(A, inf_t, C) -> range<_with_increment, std::common_type_t<A, C>, inf_t>;
+
+    template<class ...As> requires (is_partial<As> || ...)
+    range(As...) -> range<decay_t<As>...>;
 
     /**
      * Default range between 2 numbers.
@@ -37,7 +47,11 @@ namespace kaixo {
     struct range<Ty> {
         Ty a{};
         Ty b{};
-        constexpr range(Ty a, Ty b) : a(a), b(b) {}
+
+        template<class A, class B>
+        constexpr range(A a, B b)
+            : a(static_cast<Ty>(a)),
+              b(static_cast<Ty>(b)) {}
 
         struct iterator {
             using iterator_category = std::input_iterator_tag;
@@ -55,6 +69,44 @@ namespace kaixo {
         constexpr iterator begin() const { return { a }; }
         constexpr iterator end() const { return { std::max(b + 1, a) }; }
     };
+    
+    /**
+     * Default range between 2 numbers with increment.
+     */
+    template<arithmetic Ty>
+    struct range<_with_increment, Ty> {
+        Ty a{};
+        Ty b{};
+        Ty c{};
+
+        template<class A, class B, class C>
+        constexpr range(A a, B b, C c) 
+            : a(static_cast<Ty>(a)), 
+              b(static_cast<Ty>(b)), 
+              c(static_cast<Ty>(c)) {}
+
+        struct iterator {
+            using iterator_category = std::input_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using value_type = Ty;
+
+            Ty value{};
+            Ty incr{};
+
+            constexpr iterator& operator++() { value += incr; return *this; }
+            constexpr iterator operator++(int) { iterator b = *this; value += incr; return b; }
+            constexpr Ty operator*() { return value; }
+
+            constexpr bool operator==(const iterator& b) const {
+                if constexpr (floating_point<Ty>)
+                    return b.value >= value - incr / 2 && b.value <= value + incr / 2;
+                else return value == b.value; 
+            }
+        };
+
+        constexpr iterator begin() const { return { a, c }; }
+        constexpr iterator end() const { return { std::max(b + c, a), c }; }
+    };
 
     /**
      * Range from value to infinity.
@@ -70,84 +122,60 @@ namespace kaixo {
             using difference_type = std::ptrdiff_t;
             using value_type = Ty;
 
-            std::optional<Ty> value{};
+            Ty value{};
 
-            constexpr iterator& operator++() { ++value.value(); return *this; }
-            constexpr iterator operator++(int) { iterator b = *this; ++value.value(); return b; }
-            constexpr Ty operator*() { return value.value(); }
+            constexpr iterator& operator++() { ++value; return *this; }
+            constexpr iterator operator++(int) { iterator b = *this; ++value; return b; }
+            constexpr Ty operator*() { return value; }
             constexpr bool operator==(const iterator& b) const { return value == b.value; }
         };
 
         constexpr iterator begin() const { return { a }; }
-        constexpr iterator end() const { return {}; }
+        constexpr iterator end() const { return { std::numeric_limits<Ty>::max() }; }
     };
-
+    
     /**
-     * Range from dependent variable to value.
+     * Range from value to infinity with increment.
      */
-    template<is_partial A, arithmetic Ty>
-    struct range<A, Ty> {
-        using is_range = int;
-        using depend = depend<A>;
-
-        A a{};
-        Ty b{};
-
-        template<class T>
-        constexpr range(T&& a, Ty b) : a(std::forward<T>(a)), b(b) {}
-
-        constexpr auto evaluate(is_named_tuple auto& tuple) const {
-            return kaixo::range{ (Ty)kaixo::evaluate(a, tuple), b };
-        }
-    };
-
-    /**
-     * Range from dependent variable to infinity.
-     */
-    template<is_partial A>
-    struct range<A, inf_t> {
-        using is_range = int;
-        using depend = depend<A>;
-
-        A a;
-
-        template<class T>
-        constexpr range(T&& a, inf_t) : a(std::forward<T>(a)) {}
-
-        constexpr auto evaluate(is_named_tuple auto& tuple) const {
-            return kaixo::range{ kaixo::evaluate(a, tuple), inf };
-        }
-    };
-
-    /**
-     * Range from value to dependent variable.
-     */
-    template<arithmetic Ty, is_partial B>
-    struct range<Ty, B> {
-        using is_range = int;
-        using depend = depend<B>;
-
+    template<arithmetic Ty>
+    struct range<_with_increment, Ty, inf_t> {
         Ty a{};
-        B b{};
+        Ty c{};
 
-        template<class T>
-        constexpr range(Ty a, T&& b) : a(a), b(std::forward<T>(b)) {}
+        template<class A, class B>
+        constexpr range(A a, inf_t, B c) 
+            : a(static_cast<Ty>(a)), 
+              c(static_cast<Ty>(c)) {}
 
-        constexpr auto evaluate(is_named_tuple auto& tuple) const {
-            return kaixo::range{ a, (Ty)kaixo::evaluate(b, tuple) };
-        }
+        struct iterator {
+            using iterator_category = std::input_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using value_type = Ty;
+
+            Ty value{};
+            Ty incr{};
+
+            constexpr iterator& operator++() { value += incr; return *this; }
+            constexpr iterator operator++(int) { iterator b = *this; value += incr; return b; }
+            constexpr Ty operator*() { return value; }
+            constexpr bool operator==(const iterator& b) const { return value == b.value; }
+        };
+
+        constexpr iterator begin() const { return { a, c }; }
+        constexpr iterator end() const { return { std::numeric_limits<Ty>::max(), c }; }
     };
 
     /**
-     * Range from dependent variable to dependent variable.
+     * Partial range.
      */
-    template<is_partial A, is_partial B>
+    template<class A, class B>
+        requires (is_partial<A> || is_partial<B>)
     struct range<A, B> {
         using is_range = int;
         using depend = concat_t<depend<A>, depend<B>>;
 
-        A a;
-        B b;
+        [[no_unique_address]] A a;
+        [[no_unique_address]] B b;
 
         template<class T, class Q>
         constexpr range(T&& a, Q&& b) : a(std::forward<T>(a)), b(std::forward<Q>(b)) {}
@@ -155,5 +183,35 @@ namespace kaixo {
         constexpr auto evaluate(is_named_tuple auto& tuple) const {
             return kaixo::range{ kaixo::evaluate(a, tuple), kaixo::evaluate(b, tuple) };
         }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
+    };
+
+    /**
+     * Partial range with step size.
+     */
+    template<class A, class B, class C>
+        requires (is_partial<A> || is_partial<B> || is_partial<C>)
+    struct range<A, B, C> {
+        using is_range = int;
+        using depend = concat_t<depend<A>, depend<B>>;
+
+        [[no_unique_address]] A a;
+        [[no_unique_address]] B b;
+        [[no_unique_address]] C c;
+
+        template<class T, class Q, class R>
+        constexpr range(T&& a, Q&& b, R&& c) 
+            : a(std::forward<T>(a)), b(std::forward<Q>(b)), c(std::forward<R>(c)) {}
+
+        constexpr auto evaluate(is_named_tuple auto& tuple) const {
+            return kaixo::range{ 
+                kaixo::evaluate(a, tuple), 
+                kaixo::evaluate(b, tuple),
+                kaixo::evaluate(c, tuple), 
+            };
+        }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
     };
 }

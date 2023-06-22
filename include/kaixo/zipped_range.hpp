@@ -96,6 +96,8 @@ namespace kaixo {
                 };
             });
         }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
     template<class Ty>

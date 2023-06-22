@@ -30,8 +30,7 @@ namespace kaixo {
                 return sequence<sizeof...(Args)>([&]<std::size_t ...Is>() {
                     return std::forward<Self>(self).fun(kaixo::evaluate(std::get<Is>(std::forward<Self>(self).args), tuple)...);
                 });
-            }
-            else {
+            } else {
                 return sequence<sizeof...(Args)>([&]<std::size_t ...Is>() {
                     return overload_expression{
                         std::forward<Self>(self).fun,
@@ -40,6 +39,8 @@ namespace kaixo {
                 });
             }
         }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
 #define lc_std_fun(y, x)                                                                 \
