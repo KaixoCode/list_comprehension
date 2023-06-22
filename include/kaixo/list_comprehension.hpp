@@ -44,15 +44,23 @@ namespace kaixo {
 
     template<class Ty> concept is_range_wrapper = specialization<Ty, range_wrapper>;
 
+    /**
+     * Wrap a range into either an owning or reference wrapper.
+     * @param range range
+     */
     template<is_range Range>
         requires (!is_range_wrapper<Range>)
-    constexpr auto wrap_range(Range&& range) {
+    constexpr range_wrapper<Range&&> wrap_range(Range&& range) {
         return range_wrapper<Range&&>{ { std::forward<Range>(range) } };
     }
 
-    template<class Range>
-    constexpr decltype(auto) wrap_range(Range&& range) {
-        return std::forward<Range>(range);
+    /**
+     * Overload for non-ranges, just returns exact input back.
+     * @param ty non-range
+     */
+    template<class Ty>
+    constexpr Ty&& wrap_range(Ty&& ty) {
+        return std::forward<Ty>(ty);
     }
 
     /**
@@ -70,22 +78,40 @@ namespace kaixo {
 
     /**
      * Tests if expression is executable with a certain named tuple.
+     * @tparam Ty type
+     * @tparam Tuple named tuple
      */
     template<class Ty, class Tuple>
     concept is_executable_with = requires(decay_t<Ty>&val, return_code & code, decay_t<Tuple>&tuple) {
         { val.execute(code, tuple) } -> is_named_tuple;
     };
 
+    /**
+     * Execute a list comprehension extension.
+     * @param e instance of the extension
+     * @param code out parameter, set return code
+     * @param tuple named tuple
+     */
     template<class E>
     constexpr decltype(auto) execute(E&& e, return_code& code, is_named_tuple auto& tuple) {
-        if constexpr (is_executable_with<E, decltype(tuple)>) {
+        // Default executables
+        if constexpr (is_executable_with<E, decltype(tuple)>)
             return std::forward<E>(e).execute(code, tuple);
-        }
+        // Constraints: expressions resulting in bool to skip values in comprehension.
         else if constexpr (std::convertible_to<decltype(evaluate(std::forward<E>(e), tuple)), bool>) {
             code = bool(evaluate(std::forward<E>(e), tuple)) ? return_code::none : return_code::skip;
             return tuple;
-        }
+        } else return tuple;
     }
+
+    // Not partial, so full type is itself.
+    template<class R, is_named_tuple T> 
+    struct full_type : std::type_identity<R> {};
+
+    // Evaluate partial and recurse.
+    template<is_partial R, is_named_tuple T> 
+    struct full_type<R, T> 
+        : full_type<decltype(std::declval<R&>().evaluate(std::declval<T&>())), T> {};
 
     /**
      * Get the complete type, given a named tuple.
@@ -93,13 +119,27 @@ namespace kaixo {
      * @tparam T named tuple
      */
     template<class R, is_named_tuple T>
-    struct full_type : std::type_identity<R> {};
-
-    template<is_partial R, is_named_tuple T> // Recurse on partial.
-    struct full_type<R, T> : full_type<decltype(std::declval<R&>().evaluate(std::declval<T&>())), T> {};
-
-    template<class R, is_named_tuple T>
     using full_type_t = full_type<R, T>::type;
+
+    // Not anything, so does not add new values.
+    template<class R, is_named_tuple T>
+    struct defined_values : std::type_identity<T> {};
+
+    // Specialization for executables,  check return type of execute method.
+    template<class R, is_named_tuple T>   
+        requires is_executable_with<R, T>
+    struct defined_values<R, T> 
+        : std::type_identity<decay_t<decltype(std::declval<R&>().execute(
+            std::declval<return_code&>(), std::declval<T&>()))>> {};
+
+    // Specialization for ranges, reference type should always be a named tuple.
+    template<is_range R, is_named_tuple T> 
+    struct defined_values<R, T> 
+        : std::type_identity<prepend_t<as_info<T>, typename R::reference>> {};
+
+    // Evaluate partials to full type and recurse.
+    template<is_partial_range R, is_named_tuple T> 
+    struct defined_values<R, T> : defined_values<full_type_t<R, T>, T> {};
 
     /**
      * Get the defined named values of type R.
@@ -107,57 +147,56 @@ namespace kaixo {
      * @tparam T named tuple
      */
     template<class R, is_named_tuple T>
-    struct defined_values : std::type_identity<T> {};
-
-    template<class R, is_named_tuple T>
-        requires is_executable_with<R, T>
-    struct defined_values<R, T> : std::type_identity<decay_t<decltype(
-        std::declval<R&>().execute(std::declval<return_code&>(), std::declval<T&>()))>> {};
-
-    template<is_range R, is_named_tuple T>
-    struct defined_values<R, T> : std::type_identity<prepend_t<as_info<T>, typename R::reference>> {};
-
-    template<is_partial_range R, is_named_tuple T>
-    struct defined_values<R, T> : defined_values<full_type_t<R, T>, T> {};
-
-    template<class R, is_named_tuple T>
     using defined_values_t = typename defined_values<R, T>::type;
+
+    template<is_named_tuple Tuple, class ...Parts>
+    struct named_tuple_type;
+
+    template<is_named_tuple Tuple, class Part, class ...Parts>
+    struct named_tuple_type<Tuple, Part, Parts...>
+        : named_tuple_type<defined_values_t<Part, Tuple>, Parts...> {};
+
+    template<is_named_tuple Tuple, class Part>
+    struct named_tuple_type<Tuple, Part> {
+        using type = defined_values_t<Part, Tuple>;
+    };
 
     /**
      * Get the type of the named tuple given all parts.
      * @tparam Tuple named tuple
      * @tparam Parts parts
      */
-    template<is_named_tuple Tuple, class Parts>
-    struct named_tuple_type;
-
-    template<is_named_tuple Tuple, class Part, class ...Parts>
-    struct named_tuple_type<Tuple, info<Part, Parts...>>
-        : named_tuple_type<defined_values_t<Part, Tuple>, info<Parts...>> {};
-
-    template<is_named_tuple Tuple, class Part>
-    struct named_tuple_type<Tuple, info<Part>> {
-        using type = defined_values_t<Part, Tuple>;
-    };
-
     template<class ...Parts>
-    using named_tuple_type_t = named_tuple_type<named_tuple<>, info<Parts...>>::type;
+    using named_tuple_type_t = named_tuple_type<named_tuple<>, Parts...>::type;
+
+    // Use dud for non-partials.
+    template<class R, is_named_tuple T>
+    struct intermediate_value : std::type_identity<dud> {};
+
+    // Partial range stores optional to its full type.
+    template<is_partial_range R, is_named_tuple T>
+    struct intermediate_value<R, T> : std::type_identity<std::optional<full_type_t<R, T>>> {};
 
     /**
-     * Get the intermediate value of type R. For every part this is a
-     * reference to the original part, except for a partial range, where
-     * for every iteration a new instance is generated, so it's stored by value.
+     * Get the intermediate value of type R. For partial ranges
+     * this is used to store the full range once evaluated.
      * @tparam R type to get intermediate value of
      * @tparam T named tuple
      */
     template<class R, is_named_tuple T>
-    struct intermediate_value : std::type_identity<dud> {};
-
-    template<is_partial_range R, is_named_tuple T>
-    struct intermediate_value<R, T> : std::type_identity<std::optional<full_type_t<R, T>>> {};
-
-    template<class R, is_named_tuple T>
     using intermediate_value_t = intermediate_value<R, T>::type;
+
+    // Not a range, so no iterator, use dud.
+    template<class R, is_named_tuple T>
+    struct iterator_data : std::type_identity<dud> {};
+
+    // Normal range, just get its iterator type.
+    template<is_range R, is_named_tuple T> 
+    struct iterator_data<R, T> : std::type_identity<std::ranges::iterator_t<R>> {};
+
+    // Evaluate partial range to full type and recurse.
+    template<is_partial_range R, is_named_tuple T>
+    struct iterator_data<R, T> : iterator_data<full_type_t<R, T>, T> {};
 
     /**
      * Get the iterator type of a range, given a named tuple.
@@ -165,46 +204,59 @@ namespace kaixo {
      * @tparam T named tuple
      */
     template<class R, is_named_tuple T>
-    struct iterator_data : std::type_identity<dud> {};
-
-    template<is_range R, is_named_tuple T> // Normal range, just get its iterator type.
-    struct iterator_data<R, T> : std::type_identity<std::ranges::iterator_t<R>> {};
-
-    template<is_partial_range R, is_named_tuple T>
-    struct iterator_data<R, T> : iterator_data<full_type_t<R, T>, T> {};
-
-    template<class R, is_named_tuple T>
     using iterator_data_t = iterator_data<R, T>::type;
 
     /**
-     * Flatten a tuple containing tuples.
+     * Overload for non-tuple, return single value as tuple.
      * @param arg value
      */
     template<class Ty>
-    constexpr decltype(auto) flatten_tuple(Ty&& arg) {
+    constexpr std::tuple<Ty&&> flatten_tuple(Ty&& arg) {
         return std::forward_as_tuple(std::forward<Ty>(arg));
     }
 
-    template<specialization<std::pair> Tuple>
-    constexpr decltype(auto) flatten_tuple(Tuple&& tuple) {
+    /**
+     * Overload for pair, flatten both values in pair and concat.
+     * @param pair pair
+     */
+    template<specialization<std::pair> Pair>
+    constexpr decltype(auto) flatten_tuple(Pair&& pair) {
         return std::tuple_cat(
-            flatten_tuple(std::forward<Tuple>(tuple).first),
-            flatten_tuple(std::forward<Tuple>(tuple).second));
+            flatten_tuple(std::forward<Pair>(pair).first),
+            flatten_tuple(std::forward<Pair>(pair).second));
     }
 
+    /**
+     * Overload for tuple, flatten all values in tuple and concat.
+     * @param tuple tuple
+     */
     template<specialization<std::tuple> Tuple>
     constexpr decltype(auto) flatten_tuple(Tuple&& tuple) {
-        return sequence<as_info<decay_t<Tuple>>::size>([&]<std::size_t ...Is>() {
-            return std::tuple_cat(
-                flatten_tuple(std::get<Is>(std::forward<Tuple>(tuple)))...);
+        constexpr std::size_t size = std::tuple_size_v<decay_t<Tuple>>;
+        return sequence<size>([&]<std::size_t ...Is>() {
+            return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Tuple>(tuple)))...);
         });
     }
 
     /**
      * Flatten a tuple type containing tuples.
+     * @tparam Ty tuple
      */
     template<class Ty>
     using flatten_tuple_type_t = decltype(flatten_tuple(std::declval<Ty>()));
+
+    template<class T, class V, class Q>
+    struct zip_as_named_tuple;
+
+    /**
+     * Zip value types and variables as a named_tuple.
+     * @tparam T tuple of value types
+     * @tparam V pack of variables
+     * @tparam Q type to copy cvref from
+     */
+    template<template<class...> class R, class ...Tys, is_var ...Vars, class Q>
+    struct zip_as_named_tuple<R<Tys...>, info<Vars...>, Q>
+        : std::type_identity<named_tuple<named_value<add_cvref_t<Tys, Q>, Vars>...>> {};
 
     /**
      * Determine the reference type of a named range based on
@@ -215,30 +267,37 @@ namespace kaixo {
     template<is_range Range, is_var ...Vars>
     struct determine_named_range_reference;
 
+    // One-to-one relation, just match reference type 
+    // of range with the variable.
     template<is_range Range, is_var Var>
     struct determine_named_range_reference<Range, Var>
-        : std::type_identity<named_tuple<named_value<std::ranges::range_reference_t<Range>, Var>>> {
+        : std::type_identity<named_tuple<
+            named_value<std::ranges::range_reference_t<Range>, Var>>> {
         constexpr static bool flatten = false;
     };
 
-    template<class, class, class>
-    struct zip_as_named_tuple;
-    template<template<class...> class R, class ...Tys, is_var ...Vars, class Q>
-    struct zip_as_named_tuple<R<Tys...>, info<Vars...>, Q>
-        : std::type_identity<named_tuple<named_value<add_cvref_t<Tys, Q>, Vars>...>> {};
-
+    // Range results in tuple with same size as amount of variables.
+    // Deconstruct tuple and match every value with its respective variable.
     template<is_range Range, is_var ...Vars>
         requires (as_info<std::ranges::range_reference_t<Range>>::size == sizeof...(Vars))
     struct determine_named_range_reference<Range, Vars...>
-        : zip_as_named_tuple<decay_t<std::ranges::range_reference_t<Range>>, info<Vars...>, std::ranges::range_reference_t<Range>> {
+        : zip_as_named_tuple<
+            decay_t<std::ranges::range_reference_t<Range>>, 
+            info<Vars...>, 
+            std::ranges::range_reference_t<Range>> {
         constexpr static bool flatten = false;
     };
 
+    // Variable count matches flattened range result.
     template<is_range Range, is_var ...Vars>
-        requires (as_info<std::ranges::range_reference_t<Range>>::size != sizeof...(Vars)
-    && as_info<flatten_tuple_type_t<std::ranges::range_reference_t<Range>>>::size == sizeof...(Vars))
-        struct determine_named_range_reference<Range, Vars...> : zip_as_named_tuple<
-        flatten_tuple_type_t<std::ranges::range_reference_t<Range>>, info<Vars...>, std::ranges::range_reference_t<Range>> {
+        requires (
+            as_info<std::ranges::range_reference_t<Range>>::size != sizeof...(Vars) && 
+            as_info<flatten_tuple_type_t<std::ranges::range_reference_t<Range>>>::size == sizeof...(Vars))
+    struct determine_named_range_reference<Range, Vars...> 
+        : zip_as_named_tuple<
+            flatten_tuple_type_t<std::ranges::range_reference_t<Range>>, 
+            info<Vars...>, 
+            std::ranges::range_reference_t<Range>> {
         constexpr static bool flatten = true;
     };
 
@@ -429,8 +488,7 @@ namespace kaixo {
                 if constexpr (I == sizeof...(Parts)) {
                     values.emplace(std::forward<Tuple>(cur_values).value);
                     return code;
-                }
-                else {
+                } else {
                     using type = info<Parts...>::template element<I>::type;
                     auto& part = std::get<I>(self->parts);
                     if constexpr (is_range_kind<type>) {
@@ -455,8 +513,7 @@ namespace kaixo {
                         }
 
                         return initialize<I + 1>(std::forward<Tuple>(cur_values).assign(*iter), code);
-                    }
-                    else {
+                    } else {
                         return_code new_code = return_code::none;
                         using returned_tuple = decltype(execute(part, new_code, cur_values));
                         // If returns same tuple (did not add values), don't evaluate
@@ -472,7 +529,7 @@ namespace kaixo {
                 }
             }
 
-            constexpr inline void prepare() {
+            constexpr void prepare() {
                 return_code _code = initialize<0>(named_tuple<>{}, return_code::none); // Set iterators to begin
                 if (_code == return_code::skip) operator++();
                 if (_code == return_code::stop) set_end();
@@ -497,7 +554,7 @@ namespace kaixo {
 
         template<class Ty> 
             requires (!specialization<Ty, std::initializer_list> && constructible<Ty, iterator, iterator>)
-        constexpr operator Ty() { return Ty{ begin(), end() }; }
+        constexpr operator Ty() const { return Ty{ begin(), end() }; }
     };
 
     template<class R, class ...As> list_comprehension(R&&, std::tuple<As...>&&) -> list_comprehension<R, As...>;
@@ -509,8 +566,8 @@ namespace kaixo {
      */
     template<class R, class ...Parts>
         requires (concat_t<depend<R>, depend<Parts>...>::unique
-    ::template remove<typename concat_t<define<Parts>...>::unique>::size != 0)
-        struct list_comprehension<R, Parts...> {
+            ::template remove<typename concat_t<define<Parts>...>::unique>::size != 0)
+    struct list_comprehension<R, Parts...> {
         using is_range = int;
 
         using depend = concat_t<depend<R>, depend<Parts>...>::unique
