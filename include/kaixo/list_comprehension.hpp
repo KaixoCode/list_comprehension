@@ -211,44 +211,25 @@ namespace kaixo {
      * @param arg value
      */
     template<class Ty>
-    constexpr std::tuple<Ty&&> flatten_tuple(Ty&& arg) {
-        return std::forward_as_tuple(std::forward<Ty>(arg));
-    }
+    constexpr decltype(auto) flatten_tuple(Ty&& arg) {
+        if constexpr (specialization<Ty, std::pair>) {
+            return std::tuple_cat(
+                flatten_tuple(std::forward<Ty>(arg).first),
+                flatten_tuple(std::forward<Ty>(arg).second));
 
-    /**
-     * Overload for pair, flatten both values in pair and concat.
-     * @param pair pair
-     */
-    template<specialization<std::pair> Pair>
-    constexpr decltype(auto) flatten_tuple(Pair&& pair) {
-        return std::tuple_cat(
-            flatten_tuple(std::forward<Pair>(pair).first),
-            flatten_tuple(std::forward<Pair>(pair).second));
-    }
-
-    /**
-     * Overload for tuple, flatten all values in tuple and concat.
-     * @param tuple tuple
-     */
-    template<specialization<std::tuple> Tuple>
-    constexpr decltype(auto) flatten_tuple(Tuple&& tuple) {
-        constexpr std::size_t size = std::tuple_size_v<decay_t<Tuple>>;
-        return sequence<size>([&]<std::size_t ...Is>() {
-            return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Tuple>(tuple)))...);
-        });
-    }
-    
-    /**
-     * Overload for types supporting structured bindings, flatten all values in tuple and concat.
-     * @param tuple tuple
-     */
-    template<class Ty>
-        requires (aggregate<decay_t<Ty>>)
-    constexpr decltype(auto) flatten_tuple(Ty&& value) {
-        constexpr std::size_t size = struct_size_v<decay_t<Ty>>;
-        return sequence<size>([&]<std::size_t ...Is>() {
-            return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Ty>(value)))...);
-        });
+        } else if constexpr (specialization<Ty, std::tuple>) {
+            constexpr std::size_t size = std::tuple_size_v<decay_t<Ty>>;
+            return sequence<size>([&]<std::size_t ...Is>() {
+                return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Ty>(arg)))...);
+            });
+        } else if constexpr (aggregate<decay_t<Ty>>) {
+            constexpr std::size_t size = struct_size_v<decay_t<Ty>>;
+            return sequence<size>([&]<std::size_t ...Is>() {
+                return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Ty>(arg)))...);
+            });
+        } else {
+            return std::forward_as_tuple(std::forward<Ty>(arg));
+        }
     }
 
     /**

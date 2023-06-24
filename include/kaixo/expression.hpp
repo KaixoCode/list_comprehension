@@ -153,7 +153,7 @@ namespace kaixo {
         // what reference is stored in the tuple, instead of just assigning to the 
         // reference that was stored on construction.
         using tuple_type = std::tuple<wrap_reference<typename Args::value_type>...>;
-        using define = concat_t<kaixo::define<Args>...>::unique;
+        using define = concat_t<kaixo::define<Args>...>;
 
         template<is_var Var>
         constexpr static bool contains = define::template occurs<Var>;
@@ -175,8 +175,7 @@ namespace kaixo {
             using type = typename info<Args...>::template element<index>::type::value_type;
             if constexpr (lvalue_reference<type>) {
                 return std::get<index>(std::forward<Self>(self).value).get();
-            }
-            else {
+            } else {
                 return std::move(std::get<index>(std::forward<Self>(self).value));
             }
         }
