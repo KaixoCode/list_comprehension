@@ -224,8 +224,8 @@ namespace kaixo {
             return sequence<size>([&]<std::size_t ...Is>() {
                 return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
             });
-        } else if constexpr (aggregate<decay_t<Ty>>) {
-            constexpr std::size_t size = struct_size_v<decay_t<Ty>>;
+        } else if constexpr (structured_binding<decay_t<Ty>>) {
+            constexpr std::size_t size = binding_size_v<decay_t<Ty>>;
             return sequence<size>([&]<std::size_t ...Is>() {
                 return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
             });
