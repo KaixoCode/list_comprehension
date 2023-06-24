@@ -208,24 +208,26 @@ namespace kaixo {
 
     /**
      * Overload for non-tuple, return single value as tuple.
+     * @tparam I depth
      * @param arg value
      */
-    template<class Ty>
+    template<std::size_t I, class Ty>
     constexpr decltype(auto) flatten_tuple(Ty&& arg) {
-        if constexpr (specialization<Ty, std::pair>) {
+        if constexpr (I == 0)
+            return std::forward_as_tuple(std::forward<Ty>(arg));
+        else if constexpr (specialization<Ty, std::pair>) {
             return std::tuple_cat(
-                flatten_tuple(std::forward<Ty>(arg).first),
-                flatten_tuple(std::forward<Ty>(arg).second));
-
+                flatten_tuple<I - 1>(std::forward<Ty>(arg).first),
+                flatten_tuple<I - 1>(std::forward<Ty>(arg).second));
         } else if constexpr (specialization<Ty, std::tuple>) {
             constexpr std::size_t size = std::tuple_size_v<decay_t<Ty>>;
             return sequence<size>([&]<std::size_t ...Is>() {
-                return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Ty>(arg)))...);
+                return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
             });
         } else if constexpr (aggregate<decay_t<Ty>>) {
             constexpr std::size_t size = struct_size_v<decay_t<Ty>>;
             return sequence<size>([&]<std::size_t ...Is>() {
-                return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Ty>(arg)))...);
+                return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
             });
         } else {
             return std::forward_as_tuple(std::forward<Ty>(arg));
@@ -234,10 +236,11 @@ namespace kaixo {
 
     /**
      * Flatten a tuple type containing tuples.
+     * @tparam I depth to flatten
      * @tparam Ty tuple
      */
-    template<class Ty>
-    using flatten_tuple_type_t = decltype(flatten_tuple(std::declval<Ty>()));
+    template<std::size_t I, class Ty>
+    using flatten_tuple_type_t = decltype(flatten_tuple<I>(std::declval<Ty>()));
 
     template<class T, class V, class Q>
     struct zip_as_named_tuple;
@@ -282,18 +285,42 @@ namespace kaixo {
         constexpr static bool flatten = false;
     };
 
-    // Variable count matches flattened range result.
-    template<is_range Range, is_var ...Vars>
-        requires (
-            as_info<std::ranges::range_reference_t<Range>>::size != sizeof...(Vars) && 
-            as_info<flatten_tuple_type_t<std::ranges::range_reference_t<Range>>>::size == sizeof...(Vars))
-    struct determine_named_range_reference<Range, Vars...> 
+    // Find max flatten depth based on when tuple size stops changing
+    template<is_range Range, std::size_t I = 0> struct max_flatten_depth;
+    template<is_range Range, std::size_t I>
+        requires (as_info<flatten_tuple_type_t<I, std::ranges::range_reference_t<Range>>>::size
+               == as_info<flatten_tuple_type_t<I + 1, std::ranges::range_reference_t<Range>>>::size)
+    struct max_flatten_depth<Range, I> : std::integral_constant<std::size_t, I> {};
+               
+    template<is_range Range, std::size_t I>
+        requires (as_info<flatten_tuple_type_t<I, std::ranges::range_reference_t<Range>>>::size
+               != as_info<flatten_tuple_type_t<I + 1, std::ranges::range_reference_t<Range>>>::size)
+    struct max_flatten_depth<Range, I> : max_flatten_depth<Range, I + 1> {};
+
+    // Try different flatten depths until it matches var count
+    template<is_range Range, std::size_t Max, std::size_t R, is_var ...Vars> struct try_flatten_range;
+    template<is_range Range, std::size_t Max, is_var ...Vars>
+    struct try_flatten_range<Range, Max, Max, Vars...> {};
+    
+    template<is_range Range, std::size_t Max, std::size_t R, is_var ...Vars>
+        requires (as_info<flatten_tuple_type_t<R, std::ranges::range_reference_t<Range>>>::size == sizeof...(Vars))
+    struct try_flatten_range<Range, Max, R, Vars...>
         : zip_as_named_tuple<
-            flatten_tuple_type_t<std::ranges::range_reference_t<Range>>, 
-            info<Vars...>, 
+            flatten_tuple_type_t<R, std::ranges::range_reference_t<Range>>,
+            info<Vars...>,
             std::ranges::range_reference_t<Range>> {
         constexpr static bool flatten = true;
+        constexpr static std::size_t depth = R;
     };
+    
+    template<is_range Range, std::size_t Max, std::size_t R, is_var ...Vars>
+        requires (as_info<flatten_tuple_type_t<R, std::ranges::range_reference_t<Range>>>::size != sizeof...(Vars))
+    struct try_flatten_range<Range, Max, R, Vars...> : try_flatten_range<Range, Max, R + 1, Vars...> {};
+
+    template<is_range Range, is_var ...Vars>
+        requires (as_info<std::ranges::range_reference_t<Range>>::size != sizeof...(Vars))
+    struct determine_named_range_reference<Range, Vars...> 
+        : try_flatten_range<Range, max_flatten_depth<Range>::value + 1, 1, Vars...> {};
 
     template<class Range, is_var ...Vars> struct named_range;
     template<class T, class ...V> named_range(const T&, const V&...) -> named_range<T, V...>;
@@ -334,7 +361,7 @@ namespace kaixo {
 
             constexpr reference operator*() {
                 if constexpr (_range_info::flatten)
-                    return reference{ flatten_tuple(*it) };
+                    return reference{ flatten_tuple<_range_info::depth>(*it) };
                 else return reference{ *it };
             }
         };
@@ -381,6 +408,7 @@ namespace kaixo {
 
         struct iterator {
             using iterator_category = std::input_iterator_tag;
+            using iterator_concept = std::input_iterator_tag;
             using difference_type = std::ptrdiff_t;
             using value_type = value_type;
             using reference = reference;
@@ -397,7 +425,7 @@ namespace kaixo {
                     || other.end() == end() && other.iterators == iterators;
             }
 
-            constexpr reference operator*() {
+            constexpr reference operator*() const {
                 if (end()) throw; // Can't access past end
                 return kaixo::evaluate(self->result, values.value());
             }

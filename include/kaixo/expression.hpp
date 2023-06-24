@@ -352,6 +352,7 @@ namespace kaixo {
         template<is_var A, is_var B> constexpr auto operator,(const A&, const B&) { return var_tuple<A, B>{}; }
         template<is_var A, is_var ...Bs> constexpr auto operator,(var_tuple<Bs...>, const A&) { return var_tuple<Bs..., A>{}; }
         template<is_var A, is_var ...Bs> constexpr auto operator,(const A&, var_tuple<Bs...>) { return var_tuple<A, Bs...>{}; }
+        template<is_var ...As, is_var ...Bs> constexpr auto operator,(var_tuple<As...>, var_tuple<Bs...>) { return var_tuple<As..., Bs...>{}; }
 
         // Tuple expression operators
         template<class A, class B>

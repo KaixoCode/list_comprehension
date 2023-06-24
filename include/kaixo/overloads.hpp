@@ -54,6 +54,186 @@ namespace kaixo {
     }
 }
 
+#ifndef KAIXO_LC_RANGES
+#define KAIXO_LC_RANGES 1
+#endif
+#if KAIXO_LC_RANGES == 1
+#include <ranges>
+#include <algorithm>
+#include <iterator>
+namespace kaixo {
+    namespace overloads::ranges {
+        lc_std_fun(std::ranges::, all_of);
+        lc_std_fun(std::ranges::, any_of);
+        lc_std_fun(std::ranges::, none_of);
+        lc_std_fun(std::ranges::, for_each);
+        lc_std_fun(std::ranges::, for_each_n);
+        lc_std_fun(std::ranges::, lexicographical_compare);
+        lc_std_fun(std::ranges::, adjacent_find);
+        lc_std_fun(std::ranges::, count);
+        lc_std_fun(std::ranges::, count_if);
+        lc_std_fun(std::ranges::, mismatch);
+        lc_std_fun(std::ranges::, equal);
+        lc_std_fun(std::ranges::, contains);
+        lc_std_fun(std::ranges::, contains_subrange);
+        lc_std_fun(std::ranges::, find);
+        lc_std_fun(std::ranges::, find_if);
+        lc_std_fun(std::ranges::, find_if_not);
+        //lc_std_fun(std::ranges::, find_last);
+        //lc_std_fun(std::ranges::, find_last_if);
+        //lc_std_fun(std::ranges::, find_last_if_not);
+        lc_std_fun(std::ranges::, find_end);
+        lc_std_fun(std::ranges::, find_first_of);
+        lc_std_fun(std::ranges::, search);
+        lc_std_fun(std::ranges::, search_n);
+        lc_std_fun(std::ranges::, starts_with);
+        lc_std_fun(std::ranges::, ends_with);
+        lc_std_fun(std::ranges::, copy);
+        lc_std_fun(std::ranges::, copy_if);
+        lc_std_fun(std::ranges::, copy_n);
+        lc_std_fun(std::ranges::, copy_backward);
+        lc_std_fun(std::ranges::, move);
+        lc_std_fun(std::ranges::, move_backward);
+        lc_std_fun(std::ranges::, shift_left);
+        lc_std_fun(std::ranges::, shift_right);
+        lc_std_fun(std::ranges::, transform);
+        lc_std_fun(std::ranges::, fill);
+        lc_std_fun(std::ranges::, fill_n);
+        lc_std_fun(std::ranges::, generate);
+        lc_std_fun(std::ranges::, generate_n);
+        lc_std_fun(std::ranges::, swap_ranges);
+        lc_std_fun(std::ranges::, shuffle);
+        lc_std_fun(std::ranges::, sample);
+        lc_std_fun(std::ranges::, remove);
+        lc_std_fun(std::ranges::, remove_if);
+        lc_std_fun(std::ranges::, replace);
+        lc_std_fun(std::ranges::, replace_if);
+        lc_std_fun(std::ranges::, reverse);
+        lc_std_fun(std::ranges::, rotate);
+        lc_std_fun(std::ranges::, unique);
+        lc_std_fun(std::ranges::, remove_copy);
+        lc_std_fun(std::ranges::, remove_copy_if);
+        lc_std_fun(std::ranges::, replace_copy);
+        lc_std_fun(std::ranges::, replace_copy_if);
+        lc_std_fun(std::ranges::, reverse_copy);
+        lc_std_fun(std::ranges::, rotate_copy);
+        lc_std_fun(std::ranges::, unique_copy);
+        lc_std_fun(std::ranges::, is_partitioned);
+        lc_std_fun(std::ranges::, partition_point);
+        lc_std_fun(std::ranges::, partition);
+        lc_std_fun(std::ranges::, partition_copy);
+        lc_std_fun(std::ranges::, stable_partition);
+        lc_std_fun(std::ranges::, is_sorted);
+        lc_std_fun(std::ranges::, is_sorted_until);
+        lc_std_fun(std::ranges::, sort);
+        lc_std_fun(std::ranges::, stable_sort);
+        lc_std_fun(std::ranges::, partial_sort);
+        lc_std_fun(std::ranges::, partial_sort_copy);
+        lc_std_fun(std::ranges::, nth_element);
+        lc_std_fun(std::ranges::, lower_bound);
+        lc_std_fun(std::ranges::, upper_bound);
+        lc_std_fun(std::ranges::, binary_search);
+        lc_std_fun(std::ranges::, equal_range);
+        lc_std_fun(std::ranges::, merge);
+        lc_std_fun(std::ranges::, inplace_merge);
+        lc_std_fun(std::ranges::, set_difference);
+        lc_std_fun(std::ranges::, set_intersection);
+        lc_std_fun(std::ranges::, set_symmetric_difference);
+        lc_std_fun(std::ranges::, set_union);
+        lc_std_fun(std::ranges::, includes);
+        lc_std_fun(std::ranges::, is_heap);
+        lc_std_fun(std::ranges::, is_heap_until);
+        lc_std_fun(std::ranges::, make_heap);
+        lc_std_fun(std::ranges::, sort_heap);
+        lc_std_fun(std::ranges::, push_heap);
+        lc_std_fun(std::ranges::, pop_heap);
+        lc_std_fun(std::ranges::, max);
+        lc_std_fun(std::ranges::, max_element);
+        lc_std_fun(std::ranges::, min);
+        lc_std_fun(std::ranges::, min_element);
+        lc_std_fun(std::ranges::, minmax);
+        lc_std_fun(std::ranges::, minmax_element);
+        lc_std_fun(std::ranges::, clamp);
+        lc_std_fun(std::ranges::, is_permutation);
+        lc_std_fun(std::ranges::, next_permutation);
+        lc_std_fun(std::ranges::, prev_permutation);
+        //lc_std_fun(std::ranges::, iota);
+        lc_std_fun(std::ranges::, fold_left);
+        lc_std_fun(std::ranges::, fold_left_first);
+        lc_std_fun(std::ranges::, fold_right);
+        lc_std_fun(std::ranges::, fold_right_last);
+        lc_std_fun(std::ranges::, fold_left_with_iter);
+        lc_std_fun(std::ranges::, fold_left_first_with_iter);
+        lc_std_fun(std::ranges::, construct_at);
+        lc_std_fun(std::ranges::, destroy);
+        lc_std_fun(std::ranges::, destroy_n);
+        lc_std_fun(std::ranges::, destroy_at);
+        lc_std_fun(std::ranges::, uninitialized_copy);
+        lc_std_fun(std::ranges::, uninitialized_move);
+        lc_std_fun(std::ranges::, uninitialized_fill);
+        lc_std_fun(std::ranges::, uninitialized_copy_n);
+        lc_std_fun(std::ranges::, uninitialized_move_n);
+        lc_std_fun(std::ranges::, uninitialized_fill_n);
+        lc_std_fun(std::ranges::, uninitialized_default_construct);
+        lc_std_fun(std::ranges::, uninitialized_default_construct_n);
+        lc_std_fun(std::ranges::, uninitialized_value_construct);
+        lc_std_fun(std::ranges::, uninitialized_value_construct_n);
+        lc_std_fun(std::ranges::, begin);
+        lc_std_fun(std::ranges::, end);
+        lc_std_fun(std::ranges::, cbegin);
+        lc_std_fun(std::ranges::, cend);
+        lc_std_fun(std::ranges::, rbegin);
+        lc_std_fun(std::ranges::, rend);
+        lc_std_fun(std::ranges::, crbegin);
+        lc_std_fun(std::ranges::, crend);
+        lc_std_fun(std::ranges::, size);
+        lc_std_fun(std::ranges::, ssize);
+        lc_std_fun(std::ranges::, empty);
+        lc_std_fun(std::ranges::, data);
+        lc_std_fun(std::ranges::, cdata);
+        lc_std_fun(std::ranges::, dangling);
+        lc_std_fun(std::ranges::, to);
+        lc_std_fun(std::ranges::, view_interface);
+        lc_std_fun(std::ranges::, subrange);
+        lc_std_fun(std::ranges::, range_adaptor_closure);
+    }
+
+    namespace overloads::views {
+        lc_std_fun(std::views::, counted);
+        lc_std_fun(std::views::, iota);
+        lc_std_fun(std::views::, empty);
+        lc_std_fun(std::views::, single);
+        lc_std_fun(std::views::, istream);
+        //lc_std_fun(std::views::, repeat);
+        //lc_std_fun(std::views::, cartesian_product);
+        lc_std_fun(std::views::, all);
+        lc_std_fun(std::views::, filter);
+        lc_std_fun(std::views::, transform);
+        lc_std_fun(std::views::, take);
+        lc_std_fun(std::views::, take_while);
+        lc_std_fun(std::views::, drop);
+        lc_std_fun(std::views::, drop_while);
+        lc_std_fun(std::views::, join);
+        lc_std_fun(std::views::, split);
+        lc_std_fun(std::views::, lazy_split);
+        lc_std_fun(std::views::, common);
+        lc_std_fun(std::views::, reverse);
+        lc_std_fun(std::views::, elements);
+        lc_std_fun(std::views::, keys);
+        lc_std_fun(std::views::, values);
+        //lc_std_fun(std::views::, enumerate);
+        lc_std_fun(std::views::, zip);
+        //lc_std_fun(std::views::, zip_transform);
+        lc_std_fun(std::views::, join_with);
+        lc_std_fun(std::views::, slide);
+        lc_std_fun(std::views::, chunk);
+        lc_std_fun(std::views::, chunk_by);
+        lc_std_fun(std::views::, as_rvalue);
+        lc_std_fun(std::views::, stride);
+    }
+}
+#endif
+
 #ifndef KAIXO_LC_FUNCTIONAL
 #define KAIXO_LC_FUNCTIONAL 1
 #endif
@@ -360,6 +540,7 @@ namespace kaixo {
 #include <cuchar>
 namespace kaixo {
     namespace overloads {
+        lc_std_fun(std::, to_string);
         lc_std_fun(std::, atof);
         lc_std_fun(std::, atoi);
         lc_std_fun(std::, isalnum);
