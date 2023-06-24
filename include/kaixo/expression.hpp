@@ -204,8 +204,7 @@ namespace kaixo {
                 ((std::forward<Self>(self).set<typename kaixo::define<Tys>::type>(
                     std::move(val).get<typename kaixo::define<Tys>::type>())), ...);
                 return std::forward<Self>(self);
-            }
-            else {
+            } else {
                 return named_tuple<Args..., Tys...>{
                     std::tuple_cat(std::forward<Self>(self).value, std::move(val).value)
                 };
@@ -327,6 +326,143 @@ namespace kaixo {
     };
 
     /**
+     * Overload for non-tuple, return single value as tuple.
+     * @tparam I depth
+     * @param arg value
+     */
+    template<std::size_t I, class Ty>
+    constexpr decltype(auto) flatten_tuple(Ty&& arg) {
+        if constexpr (I == 0)
+            return std::forward_as_tuple(std::forward<Ty>(arg));
+        else if constexpr (specialization<Ty, std::pair>) {
+            return std::tuple_cat(
+                flatten_tuple<I - 1>(std::forward<Ty>(arg).first),
+                flatten_tuple<I - 1>(std::forward<Ty>(arg).second));
+        }
+        else if constexpr (specialization<Ty, std::tuple>) {
+            constexpr std::size_t size = std::tuple_size_v<decay_t<Ty>>;
+            return sequence<size>([&]<std::size_t ...Is>() {
+                return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
+            });
+        }
+        else if constexpr (structured_binding<decay_t<Ty>>) {
+            constexpr std::size_t size = binding_size_v<decay_t<Ty>>;
+            return sequence<size>([&]<std::size_t ...Is>() {
+                return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
+            });
+        }
+        else {
+            return std::forward_as_tuple(std::forward<Ty>(arg));
+        }
+    }
+
+    /**
+     * Flatten a tuple type containing tuples.
+     * @tparam I depth to flatten
+     * @tparam Ty tuple
+     */
+    template<std::size_t I, class Ty>
+    using flatten_tuple_type_t = decltype(flatten_tuple<I>(std::declval<Ty>()));
+
+    template<class T, class V, class Q>
+    struct zip_as_named_tuple;
+
+    /**
+     * Zip value types and variables as a named_tuple.
+     * @tparam T tuple of value types
+     * @tparam V pack of variables
+     * @tparam Q type to copy cvref from
+     */
+    template<template<class...> class R, class ...Tys, is_var ...Vars, class Q>
+    struct zip_as_named_tuple<R<Tys...>, info<Vars...>, Q>
+        : std::type_identity<named_tuple<named_value<add_cvref_t<Tys, Q>, Vars>...>> {};
+
+    // Find max flatten depth based on when tuple size stops changing
+    template<class Ty, std::size_t I = 0> struct max_flatten_depth;
+    template<class Ty, std::size_t I>
+        requires (as_info<flatten_tuple_type_t<I, Ty>>::size == as_info<flatten_tuple_type_t<I + 1, Ty>>::size)
+     struct max_flatten_depth<Ty, I> : std::integral_constant<std::size_t, I> {};
+
+    template<class Ty, std::size_t I>
+        requires (as_info<flatten_tuple_type_t<I, Ty>>::size != as_info<flatten_tuple_type_t<I + 1, Ty>>::size)
+        struct max_flatten_depth<Ty, I> : max_flatten_depth<Ty, I + 1> {};
+
+    // Try different flatten depths until it matches var count
+    template<class Ty, std::size_t Max, std::size_t R, is_var ...Vars> struct try_flatten_type;
+    template<class Ty, std::size_t Max, is_var ...Vars >
+    struct try_flatten_type<Ty, Max, Max, Vars...> {};
+
+    template<class Ty, std::size_t Max, std::size_t R, is_var ...Vars>
+        requires (as_info<flatten_tuple_type_t<R, Ty>>::size == sizeof...(Vars))
+    struct try_flatten_type<Ty, Max, R, Vars...>
+        : zip_as_named_tuple<flatten_tuple_type_t<R, Ty>, info<Vars...>, Ty> {
+        constexpr static std::size_t depth = R;
+    };
+
+    template<class Ty, std::size_t Max, std::size_t R, is_var ...Vars>
+        requires (as_info<flatten_tuple_type_t<R, Ty>>::size != sizeof...(Vars))
+    struct try_flatten_type<Ty, Max, R, Vars...> : try_flatten_type<Ty, Max, R + 1, Vars...> {};
+
+    /**
+     * Determine the deconstruction type.
+     * @tparam Ty type
+     * @tparam ...Vars defined variables
+     */
+    template<class Ty, is_var ...Vars>
+    struct determine_deconstruction_type
+        : try_flatten_type<Ty, max_flatten_depth<Ty>::value + 1, 0, Vars...> {};
+
+    // Not partial, so full type is itself.
+    template<class R, is_named_tuple T>
+    struct full_type : std::type_identity<R> {};
+
+    // Evaluate partial and recurse.
+    template<is_partial R, is_named_tuple T>
+    struct full_type<R, T>
+        : full_type<decltype(std::declval<R&>().evaluate(std::declval<T&>())), T> {};
+
+    /**
+     * Get the complete type, given a named tuple.
+     * @tparam R partial type
+     * @tparam T named tuple
+     */
+    template<class R, is_named_tuple T>
+    using full_type_t = full_type<R, T>::type;
+
+    /**
+     * Deconstruct expression into several variables.
+     * @tparam Ty expression
+     * @tparam ...As variables
+     */
+    template<class Ty, is_var ...As>
+    struct tuple_deconstruction {
+        using depend = depend<Ty>;
+        using define = info<As...>;
+
+        [[no_unique_address]] Ty expr;
+
+        template<class Self>
+        constexpr decltype(auto) evaluate(this Self&& self, is_named_tuple auto& tuple) {
+            using result = decay_t<decltype(kaixo::evaluate(std::forward<Self>(self).expr, tuple))>;
+            return tuple_deconstruction<result, As...>{ kaixo::evaluate(std::forward<Self>(self).expr, tuple) };
+        }
+
+        template<class Self>
+        constexpr decltype(auto) execute(this Self&& self, auto& code, is_named_tuple auto& tuple) {
+            using full = decltype(kaixo::evaluate(std::forward<Self>(self).expr, tuple));
+            using _deconstruction = determine_deconstruction_type<full, As...>;
+            using tuple_type = _deconstruction::type;
+
+            return tuple.assign(tuple_type{
+                flatten_tuple<_deconstruction::depth>(
+                    kaixo::evaluate(std::forward<Self>(self).expr, tuple))
+            });
+        }
+
+        KAIXO_EVALUATE_CALL_OPERATOR;
+    };
+
+    /**
      * Tuple of vars, used in deconstruction of tuples, and
      * in resulting expressions to yield a tuple.
      */
@@ -337,6 +473,11 @@ namespace kaixo {
         template<class Self>
         constexpr decltype(auto) evaluate(this Self&& self, is_named_tuple auto& tuple) {
             return tuple_operation<As...>{ std::tuple{ As{}... } }.evaluate(tuple);
+        }
+
+        template<class Ty>
+        constexpr decltype(auto) operator=(Ty&& arg) const {
+            return tuple_deconstruction<decay_t<Ty>, As...>{ std::forward<Ty>(arg) };
         }
 
         KAIXO_EVALUATE_CALL_OPERATOR;

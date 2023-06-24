@@ -104,23 +104,6 @@ namespace kaixo {
         } else return tuple;
     }
 
-    // Not partial, so full type is itself.
-    template<class R, is_named_tuple T> 
-    struct full_type : std::type_identity<R> {};
-
-    // Evaluate partial and recurse.
-    template<is_partial R, is_named_tuple T> 
-    struct full_type<R, T> 
-        : full_type<decltype(std::declval<R&>().evaluate(std::declval<T&>())), T> {};
-
-    /**
-     * Get the complete type, given a named tuple.
-     * @tparam R partial type
-     * @tparam T named tuple
-     */
-    template<class R, is_named_tuple T>
-    using full_type_t = full_type<R, T>::type;
-
     // Not anything, so does not add new values.
     template<class R, is_named_tuple T>
     struct defined_values : std::type_identity<T> {};
@@ -206,122 +189,6 @@ namespace kaixo {
     template<class R, is_named_tuple T>
     using iterator_data_t = iterator_data<R, T>::type;
 
-    /**
-     * Overload for non-tuple, return single value as tuple.
-     * @tparam I depth
-     * @param arg value
-     */
-    template<std::size_t I, class Ty>
-    constexpr decltype(auto) flatten_tuple(Ty&& arg) {
-        if constexpr (I == 0)
-            return std::forward_as_tuple(std::forward<Ty>(arg));
-        else if constexpr (specialization<Ty, std::pair>) {
-            return std::tuple_cat(
-                flatten_tuple<I - 1>(std::forward<Ty>(arg).first),
-                flatten_tuple<I - 1>(std::forward<Ty>(arg).second));
-        } else if constexpr (specialization<Ty, std::tuple>) {
-            constexpr std::size_t size = std::tuple_size_v<decay_t<Ty>>;
-            return sequence<size>([&]<std::size_t ...Is>() {
-                return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
-            });
-        } else if constexpr (structured_binding<decay_t<Ty>>) {
-            constexpr std::size_t size = binding_size_v<decay_t<Ty>>;
-            return sequence<size>([&]<std::size_t ...Is>() {
-                return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
-            });
-        } else {
-            return std::forward_as_tuple(std::forward<Ty>(arg));
-        }
-    }
-
-    /**
-     * Flatten a tuple type containing tuples.
-     * @tparam I depth to flatten
-     * @tparam Ty tuple
-     */
-    template<std::size_t I, class Ty>
-    using flatten_tuple_type_t = decltype(flatten_tuple<I>(std::declval<Ty>()));
-
-    template<class T, class V, class Q>
-    struct zip_as_named_tuple;
-
-    /**
-     * Zip value types and variables as a named_tuple.
-     * @tparam T tuple of value types
-     * @tparam V pack of variables
-     * @tparam Q type to copy cvref from
-     */
-    template<template<class...> class R, class ...Tys, is_var ...Vars, class Q>
-    struct zip_as_named_tuple<R<Tys...>, info<Vars...>, Q>
-        : std::type_identity<named_tuple<named_value<add_cvref_t<Tys, Q>, Vars>...>> {};
-
-    /**
-     * Determine the reference type of a named range based on
-     * provided variables and the range.
-     * @tparam Range range
-     * @tparam ...Vars defined variables
-     */
-    template<is_range Range, is_var ...Vars>
-    struct determine_named_range_reference;
-
-    // One-to-one relation, just match reference type 
-    // of range with the variable.
-    template<is_range Range, is_var Var>
-    struct determine_named_range_reference<Range, Var>
-        : std::type_identity<named_tuple<
-            named_value<std::ranges::range_reference_t<Range>, Var>>> {
-        constexpr static bool flatten = false;
-    };
-
-    // Range results in tuple with same size as amount of variables.
-    // Deconstruct tuple and match every value with its respective variable.
-    template<is_range Range, is_var ...Vars>
-        requires (as_info<std::ranges::range_reference_t<Range>>::size == sizeof...(Vars))
-    struct determine_named_range_reference<Range, Vars...>
-        : zip_as_named_tuple<
-            decay_t<std::ranges::range_reference_t<Range>>, 
-            info<Vars...>, 
-            std::ranges::range_reference_t<Range>> {
-        constexpr static bool flatten = false;
-    };
-
-    // Find max flatten depth based on when tuple size stops changing
-    template<is_range Range, std::size_t I = 0> struct max_flatten_depth;
-    template<is_range Range, std::size_t I>
-        requires (as_info<flatten_tuple_type_t<I, std::ranges::range_reference_t<Range>>>::size
-               == as_info<flatten_tuple_type_t<I + 1, std::ranges::range_reference_t<Range>>>::size)
-    struct max_flatten_depth<Range, I> : std::integral_constant<std::size_t, I> {};
-               
-    template<is_range Range, std::size_t I>
-        requires (as_info<flatten_tuple_type_t<I, std::ranges::range_reference_t<Range>>>::size
-               != as_info<flatten_tuple_type_t<I + 1, std::ranges::range_reference_t<Range>>>::size)
-    struct max_flatten_depth<Range, I> : max_flatten_depth<Range, I + 1> {};
-
-    // Try different flatten depths until it matches var count
-    template<is_range Range, std::size_t Max, std::size_t R, is_var ...Vars> struct try_flatten_range;
-    template<is_range Range, std::size_t Max, is_var ...Vars>
-    struct try_flatten_range<Range, Max, Max, Vars...> {};
-    
-    template<is_range Range, std::size_t Max, std::size_t R, is_var ...Vars>
-        requires (as_info<flatten_tuple_type_t<R, std::ranges::range_reference_t<Range>>>::size == sizeof...(Vars))
-    struct try_flatten_range<Range, Max, R, Vars...>
-        : zip_as_named_tuple<
-            flatten_tuple_type_t<R, std::ranges::range_reference_t<Range>>,
-            info<Vars...>,
-            std::ranges::range_reference_t<Range>> {
-        constexpr static bool flatten = true;
-        constexpr static std::size_t depth = R;
-    };
-    
-    template<is_range Range, std::size_t Max, std::size_t R, is_var ...Vars>
-        requires (as_info<flatten_tuple_type_t<R, std::ranges::range_reference_t<Range>>>::size != sizeof...(Vars))
-    struct try_flatten_range<Range, Max, R, Vars...> : try_flatten_range<Range, Max, R + 1, Vars...> {};
-
-    template<is_range Range, is_var ...Vars>
-        requires (as_info<std::ranges::range_reference_t<Range>>::size != sizeof...(Vars))
-    struct determine_named_range_reference<Range, Vars...> 
-        : try_flatten_range<Range, max_flatten_depth<Range>::value + 1, 1, Vars...> {};
-
     template<class Range, is_var ...Vars> struct named_range;
     template<class T, class ...V> named_range(const T&, const V&...) -> named_range<T, V...>;
     template<class T, class ...V> named_range(T&&, const V&...) -> named_range<T, V...>;
@@ -336,8 +203,9 @@ namespace kaixo {
         using define = info<Vars...>;
 
         using range_type = Range;
-        using _range_info = determine_named_range_reference<Range, Vars...>;
-        using reference = _range_info::type;
+        using range_reference_t = std::ranges::range_reference_t<Range>;
+        using _deconstruction = determine_deconstruction_type<range_reference_t, Vars...>;
+        using reference = _deconstruction::type;
         using value_type = decay_t<reference>;
 
         [[no_unique_address]] Range rng;
@@ -360,9 +228,7 @@ namespace kaixo {
             constexpr bool operator==(const iterator& other) const { return it == other.it; }
 
             constexpr reference operator*() const {
-                if constexpr (_range_info::flatten)
-                    return reference{ flatten_tuple<_range_info::depth>(*it) };
-                else return reference{ *it };
+                return reference{ flatten_tuple<_deconstruction::depth>(*it) };
             }
         };
 
@@ -403,7 +269,7 @@ namespace kaixo {
     template<class R, class ...Parts>
     struct list_comprehension {
         using reference = std::conditional_t<is_partial<R>,
-            decltype(evaluate(std::declval<const R&>(), std::declval<const named_tuple_type_t<Parts...>&>())), R>;
+            decltype(evaluate(std::declval<const R&>(), std::declval<const named_tuple_type_t<const Parts...>&>())), R>;
         using value_type = decay_t<reference>;
 
         struct iterator {
