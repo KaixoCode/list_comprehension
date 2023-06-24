@@ -237,6 +237,19 @@ namespace kaixo {
             return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Tuple>(tuple)))...);
         });
     }
+    
+    /**
+     * Overload for types supporting structured bindings, flatten all values in tuple and concat.
+     * @param tuple tuple
+     */
+    template<class Ty>
+        requires (aggregate<decay_t<Ty>>)
+    constexpr decltype(auto) flatten_tuple(Ty&& value) {
+        constexpr std::size_t size = struct_size_v<decay_t<Ty>>;
+        return sequence<size>([&]<std::size_t ...Is>() {
+            return std::tuple_cat(flatten_tuple(std::get<Is>(std::forward<Ty>(value)))...);
+        });
+    }
 
     /**
      * Flatten a tuple type containing tuples.
