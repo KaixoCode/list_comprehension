@@ -62,7 +62,7 @@ namespace kaixo {
 
             constexpr iterator& operator++() { ++value; return *this; }
             constexpr iterator operator++(int) { iterator b = *this; ++value; return b; }
-            constexpr Ty operator*() { return value; }
+            constexpr Ty operator*() const { return value; }
             constexpr bool operator==(const iterator& b) const { return value == b.value; }
         };
 
@@ -95,7 +95,7 @@ namespace kaixo {
 
             constexpr iterator& operator++() { value += incr; return *this; }
             constexpr iterator operator++(int) { iterator b = *this; value += incr; return b; }
-            constexpr Ty operator*() { return value; }
+            constexpr Ty operator*() const { return value; }
 
             constexpr bool operator==(const iterator& b) const {
                 if constexpr (floating_point<Ty>)
@@ -126,7 +126,7 @@ namespace kaixo {
 
             constexpr iterator& operator++() { ++value; return *this; }
             constexpr iterator operator++(int) { iterator b = *this; ++value; return b; }
-            constexpr Ty operator*() { return value; }
+            constexpr Ty operator*() const { return value; }
             constexpr bool operator==(const iterator& b) const { return value == b.value; }
         };
 
@@ -157,7 +157,7 @@ namespace kaixo {
 
             constexpr iterator& operator++() { value += incr; return *this; }
             constexpr iterator operator++(int) { iterator b = *this; value += incr; return b; }
-            constexpr Ty operator*() { return value; }
+            constexpr Ty operator*() const { return value; }
             constexpr bool operator==(const iterator& b) const { return value == b.value; }
         };
 

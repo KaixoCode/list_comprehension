@@ -50,7 +50,7 @@ namespace kaixo {
                 return b;
             }
 
-            constexpr reference operator*() {
+            constexpr reference operator*() const {
                 return sequence<sizeof...(As)>([&]<std::size_t ...Is>() {
                     return reference{ std::forward_as_tuple((*std::get<Is>(iters))...) };
                 });

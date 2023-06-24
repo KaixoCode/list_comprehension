@@ -359,7 +359,7 @@ namespace kaixo {
             constexpr bool operator!=(const iterator& other) const { return !operator==(other); }
             constexpr bool operator==(const iterator& other) const { return it == other.it; }
 
-            constexpr reference operator*() {
+            constexpr reference operator*() const {
                 if constexpr (_range_info::flatten)
                     return reference{ flatten_tuple<_range_info::depth>(*it) };
                 else return reference{ *it };
@@ -403,12 +403,11 @@ namespace kaixo {
     template<class R, class ...Parts>
     struct list_comprehension {
         using reference = std::conditional_t<is_partial<R>,
-            decltype(evaluate(std::declval<R&>(), std::declval<named_tuple_type_t<Parts...>&>())), R>;
+            decltype(evaluate(std::declval<const R&>(), std::declval<const named_tuple_type_t<Parts...>&>())), R>;
         using value_type = decay_t<reference>;
 
         struct iterator {
             using iterator_category = std::input_iterator_tag;
-            using iterator_concept = std::input_iterator_tag;
             using difference_type = std::ptrdiff_t;
             using value_type = value_type;
             using reference = reference;
@@ -431,9 +430,9 @@ namespace kaixo {
             }
 
         private:
-            using named_tuple_type = named_tuple_type_t<Parts...>;
-            using iterator_datas = std::tuple<iterator_data_t<Parts, named_tuple_type>...>;
-            using intermediate_values = std::tuple<intermediate_value_t<Parts, named_tuple_type>...>;
+            using named_tuple_type = named_tuple_type_t<const Parts...>;
+            using iterator_datas = std::tuple<iterator_data_t<const Parts, const named_tuple_type>...>;
+            using intermediate_values = std::tuple<intermediate_value_t<const Parts, const named_tuple_type>...>;
 
             intermediate_values intermediate{};
             iterator_datas iterators{};
@@ -460,10 +459,9 @@ namespace kaixo {
 
                     auto to_begin = [&] {
                         if constexpr (is_partial_range<type>) {
-                            intr = evaluate(part, values.value());
+                            intr = kaixo::evaluate(part, values.value());
                             iter = std::ranges::begin(intr.value());
-                        }
-                        else iter = std::ranges::begin(part);
+                        } else iter = std::ranges::begin(part);
                     };
 
                     do {
@@ -620,30 +618,30 @@ namespace kaixo {
         constexpr decltype(auto) operator-(is_partial auto& r) { return r; }
         constexpr decltype(auto) operator-(is_partial auto&& r) { return std::move(r); }
 
-        constexpr decltype(auto) operator<(is_var auto v, is_range auto&& r) {
+        constexpr decltype(auto) operator<(is_var auto& v, is_range auto&& r) {
             return named_range{ std::move(r), v };
         }
 
-        constexpr decltype(auto) operator<(is_var auto v, is_partial auto& r) {
+        constexpr decltype(auto) operator<(is_var auto& v, is_partial auto& r) {
             return named_range{ std::move(r), v };
         }
 
-        constexpr decltype(auto) operator<(is_var auto v, is_partial auto&& r) {
+        constexpr decltype(auto) operator<(is_var auto& v, is_partial auto&& r) {
             return named_range{ std::move(r), v };
         }
 
         template<is_var ...Vars>
-        constexpr decltype(auto) operator<(var_tuple<Vars...>, is_range auto&& r) {
+        constexpr decltype(auto) operator<(var_tuple<Vars...>&&, is_range auto&& r) {
             return named_range{ std::move(r), Vars{}... };
         }
 
         template<is_var ...Vars>
-        constexpr decltype(auto) operator<(var_tuple<Vars...>, is_partial auto& r) {
+        constexpr decltype(auto) operator<(var_tuple<Vars...>&&, is_partial auto& r) {
             return named_range{ std::move(r), Vars{}... };
         }
 
         template<is_var ...Vars>
-        constexpr decltype(auto) operator<(var_tuple<Vars...>, is_partial auto&& r) {
+        constexpr decltype(auto) operator<(var_tuple<Vars...>&&, is_partial auto&& r) {
             return named_range{ std::move(r), Vars{}... };
         }
 
