@@ -234,12 +234,12 @@ namespace kaixo {
 
     template<class Ty, is_var Var>
     constexpr decltype(auto) named_value<Ty, Var>::execute(auto&, auto& tuple) const {
-        return tuple.assign(named_tuple{ Var{} = evaluate(tuple) });
+        return tuple.assign(named_tuple{ evaluate(tuple) });
     }
 
     template<class Ty, is_var Var>
     constexpr decltype(auto) named_value<Ty, Var>::evaluate(auto& tuple) const {
-        return kaixo::evaluate(value, tuple);
+        return Var{} = kaixo::evaluate(value, tuple);
     }
 
     /**
@@ -525,9 +525,9 @@ namespace kaixo {
             constexpr decltype(auto) operator()(As&& ...as) {        \
                 return (as op ...);                                  \
             }                                                        \
-        };                                                                                             \
-                                                                                                       \
-        template<class A, class B> requires are_valid_expression<A, B>                                 \
+        };                                                                                                   \
+                                                                                                             \
+        template<class A, class B> requires are_valid_expression<A, B>                                       \
         constexpr binary_operation<decay_t<A>, decay_t<B>, name> operator op(A&& a, B&& b) {                 \
             return binary_operation<decay_t<A>, decay_t<B>, name>{ std::forward<A>(a), std::forward<B>(b) }; \
         }
