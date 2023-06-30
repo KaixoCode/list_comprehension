@@ -19,8 +19,8 @@ namespace kaixo {
 
     template<is_range ...As>
     struct zipped_range<As...> {
-        using define = concat_t<define<As>...>;
-        using depend = concat_t<depend<As>...>;
+        using define = pack::concat_t<define<As>...>;
+        using depend = pack::concat_t<depend<As>...>;
 
         using reference = std::tuple<std::ranges::range_reference_t<As>...>;
         using value_type = std::tuple<std::ranges::range_value_t<As>...>;
@@ -77,13 +77,13 @@ namespace kaixo {
     };
 
     template<class Ty>
-    concept is_zipped_range = specialization<Ty, zipped_range>;
+    concept is_zipped_range = concepts::specialization<Ty, zipped_range>;
 
     template<class ...As>
         requires (((is_partial<As> || is_range<As>) && ...) && (is_partial<As> || ...))
     struct zipped_range<As...> {
         using is_range = int;
-        using depend = concat_t<depend<As>...>;
+        using depend = pack::concat_t<depend<As>...>;
 
         std::tuple<As...> ranges;
 

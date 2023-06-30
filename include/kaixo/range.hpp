@@ -25,16 +25,16 @@ namespace kaixo {
      */
     template<class ...As> struct range;
 
-    template<arithmetic A> 
+    template<concepts::arithmetic A> 
     range(A, inf_t) -> range<A, inf_t>;
 
-    template<arithmetic A, arithmetic B> 
+    template<concepts::arithmetic A, concepts::arithmetic B>
     range(A, B) -> range<std::common_type_t<A, B>>;
 
-    template<arithmetic A, arithmetic B, arithmetic C> 
+    template<concepts::arithmetic A, concepts::arithmetic B, concepts::arithmetic C>
     range(A, B, C) -> range<_with_increment, std::common_type_t<A, B, C>>;
 
-    template<arithmetic A, arithmetic C> 
+    template<concepts::arithmetic A, concepts::arithmetic C>
     range(A, inf_t, C) -> range<_with_increment, std::common_type_t<A, C>, inf_t>;
 
     template<class ...As> requires (is_partial<As> || ...)
@@ -43,7 +43,7 @@ namespace kaixo {
     /**
      * Default range between 2 numbers.
      */
-    template<arithmetic Ty>
+    template<concepts::arithmetic Ty>
     struct range<Ty> {
         Ty a{};
         Ty b{};
@@ -73,7 +73,7 @@ namespace kaixo {
     /**
      * Default range between 2 numbers with increment.
      */
-    template<arithmetic Ty>
+    template<concepts::arithmetic Ty>
     struct range<_with_increment, Ty> {
         Ty a{};
         Ty b{};
@@ -98,7 +98,7 @@ namespace kaixo {
             constexpr Ty operator*() const { return value; }
 
             constexpr bool operator==(const iterator& b) const {
-                if constexpr (floating_point<Ty>)
+                if constexpr (concepts::floating_point<Ty>)
                     return b.value >= value - incr / 2 && b.value <= value + incr / 2;
                 else return value == b.value; 
             }
@@ -111,7 +111,7 @@ namespace kaixo {
     /**
      * Range from value to infinity.
      */
-    template<arithmetic Ty>
+    template<concepts::arithmetic Ty>
     struct range<Ty, inf_t> {
         Ty a{};
 
@@ -137,7 +137,7 @@ namespace kaixo {
     /**
      * Range from value to infinity with increment.
      */
-    template<arithmetic Ty>
+    template<concepts::arithmetic Ty>
     struct range<_with_increment, Ty, inf_t> {
         Ty a{};
         Ty c{};
@@ -172,7 +172,7 @@ namespace kaixo {
         requires (is_partial<A> || is_partial<B>)
     struct range<A, B> {
         using is_range = int;
-        using depend = concat_t<depend<A>, depend<B>>;
+        using depend = pack::concat_t<depend<A>, depend<B>>;
 
         [[no_unique_address]] A a;
         [[no_unique_address]] B b;
@@ -194,7 +194,7 @@ namespace kaixo {
         requires (is_partial<A> || is_partial<B> || is_partial<C>)
     struct range<A, B, C> {
         using is_range = int;
-        using depend = concat_t<depend<A>, depend<B>>;
+        using depend = pack::concat_t<depend<A>, depend<B>>;
 
         [[no_unique_address]] A a;
         [[no_unique_address]] B b;

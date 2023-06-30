@@ -31,7 +31,7 @@ namespace kaixo {
      */
     template<class ...Args>
     constexpr auto ref_tuple(Args&& ...args) {
-        using type = std::tuple<std::conditional_t<lvalue_reference<Args>, Args, decay_t<Args>>...>;
+        using type = std::tuple<std::conditional_t<concepts::lvalue_reference<Args>, Args, decay_t<Args>>...>;
         return type{ std::forward<Args>(args)... };
     }
 
@@ -46,10 +46,10 @@ namespace kaixo {
         template<class Ty> struct var_impl : std::bool_constant<var_v<Ty>> {};
         template<class Ty> struct range_impl : std::bool_constant<range_v<Ty>> {};
 
-        constexpr auto depend = type_trait<depend_impl>{};
-        constexpr auto define = type_trait<define_impl>{};
-        constexpr auto var = type_trait<var_impl>{};
-        constexpr auto range = type_trait<range_impl>{};
+        constexpr auto depend = type_filter<depend_impl>{};
+        constexpr auto define = type_filter<define_impl>{};
+        constexpr auto var = type_filter<var_impl>{};
+        constexpr auto range = type_filter<range_impl>{};
     }
 
     namespace grab {
@@ -96,7 +96,7 @@ namespace kaixo {
         constexpr decltype(auto) execute(auto&, auto& tuple) const;
     };
 
-    template<class Ty> concept is_named_value = specialization<Ty, named_value> && !is_partial<Ty>;
+    template<class Ty> concept is_named_value = concepts::specialization<Ty, named_value> && !is_partial<Ty>;
 
     /**
      * Variable.
@@ -139,7 +139,7 @@ namespace kaixo {
      */
     template<class Ty>
     using wrap_reference = std::conditional_t<
-        lvalue_reference<Ty>,
+        concepts::lvalue_reference<Ty>,
         std::reference_wrapper<remove_reference_t<Ty>>,
         decay_t<Ty>>;
 
@@ -153,10 +153,10 @@ namespace kaixo {
         // what reference is stored in the tuple, instead of just assigning to the 
         // reference that was stored on construction.
         using tuple_type = std::tuple<wrap_reference<typename Args::value_type>...>;
-        using define = concat_t<kaixo::define<Args>...>;
+        using define = pack::concat_t<kaixo::define<Args>...>;
 
         template<is_var Var>
-        constexpr static bool contains = define::template occurs<Var>;
+        constexpr static bool contains = define::template contains<Var>;
 
         tuple_type value{};
 
@@ -173,7 +173,7 @@ namespace kaixo {
             static_assert(contains<decay_t<Var>>, "Tuple does not contain variable");
             constexpr std::size_t index = define::template index<Var>;
             using type = typename info<Args...>::template element<index>::type::value_type;
-            if constexpr (lvalue_reference<type>) {
+            if constexpr (concepts::lvalue_reference<type>) {
                 return std::get<index>(std::forward<Self>(self).value).get();
             } else {
                 return std::move(std::get<index>(std::forward<Self>(self).value));
@@ -212,7 +212,7 @@ namespace kaixo {
         }
     };
 
-    template<class Ty> concept is_named_tuple = specialization<Ty, named_tuple>;
+    template<class Ty> concept is_named_tuple = concepts::specialization<Ty, named_tuple>;
 
     /**
      * Has an evaluate function that works for a certain tuple.
@@ -266,7 +266,7 @@ namespace kaixo {
     template<class A, class B, is_operator Op>
         requires are_valid_expression<A, B>
     struct binary_operation {
-        using depend = concat_t<depend<A>, depend<B>>::unique;
+        using depend = pack::concat_t<depend<A>, depend<B>>::unique;
 
         [[no_unique_address]] A a{};
         [[no_unique_address]] B b{};
@@ -307,9 +307,9 @@ namespace kaixo {
     template<class ...As>
         requires are_valid_expression<As...>
     struct tuple_operation {
-        using depend = concat_t<depend<As>...>::unique;
+        using depend = pack::concat_t<depend<As>...>::unique;
 
-        std::tuple<std::conditional_t<lvalue_reference<As>, As, decay_t<As>>...> parts;
+        std::tuple<std::conditional_t<concepts::lvalue_reference<As>, As, decay_t<As>>...> parts;
 
         template<class Self>
         constexpr decltype(auto) evaluate(this Self&& self, is_named_tuple auto& tuple) {
@@ -318,7 +318,7 @@ namespace kaixo {
             }(std::index_sequence_for<As...>{});
             // Check whether the resulting tuple still has partial values.
             if constexpr (as_info<decltype(res)>::template count_filter < []<is_partial>{} > != 0)
-                return move_tparams_t<decltype(res), tuple_operation>{ std::move(res) };
+                return pack::copy_tparams_t<decltype(res), tuple_operation>{ std::move(res) };
             else return res;
         }
 
@@ -334,21 +334,21 @@ namespace kaixo {
     constexpr decltype(auto) flatten_tuple(Ty&& arg) {
         if constexpr (I == 0)
             return std::forward_as_tuple(std::forward<Ty>(arg));
-        else if constexpr (specialization<Ty, std::pair>) {
+        else if constexpr (concepts::specialization<Ty, std::pair>) {
             return std::tuple_cat(
                 flatten_tuple<I - 1>(std::forward<Ty>(arg).first),
                 flatten_tuple<I - 1>(std::forward<Ty>(arg).second));
         }
-        else if constexpr (specialization<Ty, std::tuple>) {
+        else if constexpr (concepts::specialization<Ty, std::tuple>) {
             constexpr std::size_t size = std::tuple_size_v<decay_t<Ty>>;
             return sequence<size>([&]<std::size_t ...Is>() {
-                return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
+                return std::tuple_cat(flatten_tuple<I - 1>(tuples::get<Is>(std::forward<Ty>(arg)))...);
             });
         }
-        else if constexpr (structured_binding<decay_t<Ty>>) {
+        else if constexpr (concepts::structured_binding<decay_t<Ty>>) {
             constexpr std::size_t size = binding_size_v<decay_t<Ty>>;
             return sequence<size>([&]<std::size_t ...Is>() {
-                return std::tuple_cat(flatten_tuple<I - 1>(std::get<Is>(std::forward<Ty>(arg)))...);
+                return std::tuple_cat(flatten_tuple<I - 1>(tuples::get<Is>(std::forward<Ty>(arg)))...);
             });
         }
         else {
@@ -364,15 +364,15 @@ namespace kaixo {
     template<std::size_t I, class Ty>
     using flatten_tuple_type_t = decltype(flatten_tuple<I>(std::declval<Ty>()));
 
-    template<class T, class V, class Q>
-    struct zip_as_named_tuple;
-
     /**
      * Zip value types and variables as a named_tuple.
      * @tparam T tuple of value types
      * @tparam V pack of variables
      * @tparam Q type to copy cvref from
      */
+    template<class T, class V, class Q>
+    struct zip_as_named_tuple;
+
     template<template<class...> class R, class ...Tys, is_var ...Vars, class Q>
     struct zip_as_named_tuple<R<Tys...>, info<Vars...>, Q>
         : std::type_identity<named_tuple<named_value<add_cvref_t<Tys, Q>, Vars>...>> {};
@@ -385,7 +385,7 @@ namespace kaixo {
 
     template<class Ty, std::size_t I>
         requires (as_info<flatten_tuple_type_t<I, Ty>>::size != as_info<flatten_tuple_type_t<I + 1, Ty>>::size)
-        struct max_flatten_depth<Ty, I> : max_flatten_depth<Ty, I + 1> {};
+    struct max_flatten_depth<Ty, I> : max_flatten_depth<Ty, I + 1> {};
 
     // Try different flatten depths until it matches var count
     template<class Ty, std::size_t Max, std::size_t R, is_var ...Vars> struct try_flatten_type;
@@ -468,7 +468,7 @@ namespace kaixo {
      */
     template<is_var ...As>
     struct var_tuple {
-        using depend = concat_t<depend<As>...>::unique;
+        using depend = pack::concat_t<depend<As>...>::unique;
 
         template<class Self>
         constexpr decltype(auto) evaluate(this Self&& self, is_named_tuple auto& tuple) {
@@ -483,7 +483,7 @@ namespace kaixo {
         KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
-    template<class Ty> concept is_var_tuple = specialization<Ty, var_tuple>;
+    template<class Ty> concept is_var_tuple = concepts::specialization<Ty, var_tuple>;
 
     /**
      * All operators to construct the unevaluated expression objects.

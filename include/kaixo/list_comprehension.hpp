@@ -12,7 +12,7 @@ namespace kaixo {
 
     // Owning range
     template<is_range Range>
-        requires (!lvalue_reference<Range>)
+        requires (!concepts::lvalue_reference<Range>)
     struct range_wrapper<Range> {
         using range_type = decay_t<Range>;
 
@@ -28,7 +28,7 @@ namespace kaixo {
 
     // Reference to range
     template<is_range Range>
-        requires lvalue_reference<Range>
+        requires concepts::lvalue_reference<Range>
     struct range_wrapper<Range> {
         using range_type = remove_reference_t<Range>;
 
@@ -42,7 +42,7 @@ namespace kaixo {
         constexpr iterator end() const { return value.get().end(); }
     };
 
-    template<class Ty> concept is_range_wrapper = specialization<Ty, range_wrapper>;
+    template<class Ty> concept is_range_wrapper = concepts::specialization<Ty, range_wrapper>;
 
     /**
      * Wrap a range into either an owning or reference wrapper.
@@ -118,7 +118,9 @@ namespace kaixo {
     // Specialization for ranges, reference type should always be a named tuple.
     template<is_range R, is_named_tuple T> 
     struct defined_values<R, T> 
-        : std::type_identity<prepend_t<as_info<T>, typename R::reference>> {};
+        : std::type_identity<typename as_info<T>
+            ::template append<as_info<typename R::reference>>
+            ::template as<named_tuple>> {};
 
     // Evaluate partials to full type and recurse.
     template<is_partial_range R, is_named_tuple T> 
@@ -269,7 +271,7 @@ namespace kaixo {
     template<class R, class ...Parts>
     struct list_comprehension {
         using reference = std::conditional_t<is_partial<R>,
-            decltype(evaluate(std::declval<const R&>(), std::declval<const named_tuple_type_t<const Parts...>&>())), R>;
+            decltype(kaixo::evaluate(std::declval<const R&>(), std::declval<const named_tuple_type_t<const Parts...>&>())), R>;
         using value_type = decay_t<reference>;
 
         struct iterator {
@@ -404,7 +406,7 @@ namespace kaixo {
                         using returned_tuple = decltype(execute(part, new_code, cur_values));
                         // If returns same tuple (did not add values), don't evaluate
                         // when already determined this initial value is invalid.
-                        if constexpr (kaixo::reference<returned_tuple>) {
+                        if constexpr (concepts::reference<returned_tuple>) {
                             if (code != return_code::none) {
                                 return initialize<I + 1>(std::forward<Tuple>(cur_values), code);
                             }
@@ -451,13 +453,13 @@ namespace kaixo {
      * @tparam ...Parts comprehension parts
      */
     template<class R, class ...Parts>
-        requires (concat_t<depend<R>, depend<Parts>...>::unique
-            ::template remove<typename concat_t<define<Parts>...>::unique>::size != 0)
+        requires (pack::concat_t<depend<R>, depend<Parts>...>::unique
+            ::template remove<typename pack::concat_t<define<Parts>...>::unique>::size != 0)
     struct list_comprehension<R, Parts...> {
         using is_range = int;
 
-        using depend = concat_t<depend<R>, depend<Parts>...>::unique
-            ::template remove<typename concat_t<define<Parts>...>::unique>;
+        using depend = pack::concat_t<depend<R>, depend<Parts>...>::unique
+            ::template remove<typename pack::concat_t<define<Parts>...>::unique>;
 
         [[no_unique_address]] R result;
         std::tuple<Parts...> parts;
@@ -475,7 +477,7 @@ namespace kaixo {
         KAIXO_EVALUATE_CALL_OPERATOR;
     };
 
-    template<class Ty> concept is_lc = specialization<Ty, list_comprehension>;
+    template<class Ty> concept is_lc = concepts::specialization<Ty, list_comprehension>;
     template<class Ty> concept is_partial_lc = is_lc<Ty> && is_partial<Ty>;
 
     namespace operators {

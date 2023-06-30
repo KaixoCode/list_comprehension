@@ -18,7 +18,7 @@ namespace kaixo {
      */
     template<class Fun, class ...Args>
     struct overload_expression {
-        using depend = concat_t<depend<Args>...>;
+        using depend = pack::concat_t<depend<Args>...>;
 
         [[no_unique_address]] Fun fun{};
         std::tuple<Args...> args;
