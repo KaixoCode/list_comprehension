@@ -16,7 +16,7 @@ output:
 ## Features
 So, what can this do?
 
-Normal list comprehension stuff with multiple ranges, some constraints, and the output. In this case the output is a tuple of 3 ints. This will create a `std::vector<std::tuple<int, int, int>>` with all the tuples from the cartesian product that satisfy the constraint. And, as you can see, you can use the variables in the ranges!
+Normal list comprehension stuff with multiple ranges, some constraints, and the output. In this case the output is a tuple of 3 ints. 
 ```cpp
 constexpr auto r1 = ((a, b, c) | c <- range(1, 11), 
     b <- range(1, c), a <- range(1, b), a*a + b*b == c*c);
