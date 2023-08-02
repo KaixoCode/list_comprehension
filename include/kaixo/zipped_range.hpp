@@ -105,7 +105,7 @@ namespace kaixo {
 
     namespace operators {
         template<class A, class B>
-            requires ((is_range_kind<A> || is_range_kind<B>)
+            requires ((is_range_kind<A> && is_range_kind<B>)
         && !is_lc<A> && !is_partial_lc<A>
             && !is_zipped_range<A> && !is_partial_zipped_range<A>)
             constexpr auto operator,(A&& a, B&& b) {

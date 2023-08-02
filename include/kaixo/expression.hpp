@@ -104,6 +104,7 @@ namespace kaixo {
      */
     template<string_literal Name>
     struct var {
+        using is_range = int; // Potentially a range
         constexpr static string_literal name = Name;
 
         using depend = info<var>;
