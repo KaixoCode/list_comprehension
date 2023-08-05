@@ -249,7 +249,7 @@ namespace kaixo {
      */
     template<class ...As>
     concept are_valid_expression = (is_partial<decay_t<As>> || ...)
-        && ((!is_range_kind<decay_t<As>> && !is_operator<decay_t<As>>) && ...);
+        && (((!is_range_kind<decay_t<As>> || is_var<decay_t<As>>) && !is_operator<decay_t<As>>) && ...);
 
     /**
      * Are valid arguments to an overloaded function for
