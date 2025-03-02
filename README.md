@@ -2,8 +2,8 @@
 List comprehension in C++! 
 
 ```cpp
-constexpr auto a = var<struct A>;
-constexpr auto b = var<struct B>;
+constexpr var<struct A> a{};
+constexpr var<struct B> b{};
 constexpr auto res = ((a, b) | a <- range(0, 4), b <- range(0, 4), a > b);
 ```
 output:
