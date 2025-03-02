@@ -597,9 +597,16 @@ namespace kaixo {
         constexpr base_const_sentinel end() const { return std::ranges::end(this->range); }
 
         // ------------------------------------------------
+        
+        constexpr std::size_t size() const requires std::ranges::sized_range<Range> {
+            return std::ranges::size(this->range);
+        }
 
-        constexpr decltype(auto) operator[](std::size_t i) requires std::ranges::random_access_range<Range> {
-            return this->transform(this->range[i]);
+        // ------------------------------------------------
+
+        template<class Self>
+        constexpr decltype(auto) operator[](this Self&& self, std::size_t i) requires std::ranges::random_access_range<Range> {
+            return std::forward<Self>(self).transform(std::forward<Self>(self).range[i]);
         }
 
         // ------------------------------------------------
@@ -1020,11 +1027,41 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        constexpr bool is_end(const Begin& value) const { return static_cast<bool>(value == endValue); }
+        constexpr std::size_t size() const {
+            if constexpr (std::same_as<Increment, detail::dud>) {
+                if (beginValue < endValue) return endValue - beginValue;
+                else return beginValue - endValue;
+            } else {
+                if (beginValue < endValue) return (endValue - beginValue) / increment;
+                else return (beginValue - endValue) / increment;
+            }
+        }
+        
+        // ------------------------------------------------
+
+        constexpr bool is_end(const Begin& value) const { 
+            if (beginValue < endValue) return static_cast<bool>(value >= endValue);
+            else return static_cast<bool>(value <= endValue);
+        }
+
         constexpr void do_increment(Begin& value) const {
             if constexpr (std::same_as<Increment, detail::dud>) ++value;
-            else if constexpr (std::invocable<Increment, Begin>) increment(value);
             else value += increment;
+        }
+
+        constexpr void do_decrement(Begin& value) const {
+            if constexpr (std::same_as<Increment, detail::dud>) --value;
+            else value -= increment;
+        }
+        
+        constexpr void do_increment(Begin& value, std::ptrdiff_t n) const {
+            if constexpr (std::same_as<Increment, detail::dud>) value += n;
+            else value += n * increment;
+        }
+
+        constexpr void do_decrement(Begin& value, std::ptrdiff_t n) const {
+            if constexpr (std::same_as<Increment, detail::dud>) value -= n;
+            else value -= n * increment;
         }
 
         // ------------------------------------------------
@@ -1069,12 +1106,12 @@ namespace kaixo {
             using value_type = Begin;
             using reference = value_type;
             using difference_type = std::ptrdiff_t;
-            using iterator_category = std::forward_iterator_tag;
+            using iterator_category = std::random_access_iterator_tag;
 
             // ------------------------------------------------
 
-            const range_storage<Begin, End, Increment>* self;
             Begin value;
+            const range_storage<Begin, End, Increment>* self;
 
             // ------------------------------------------------
 
@@ -1089,7 +1126,60 @@ namespace kaixo {
                 return copy;
             }
 
+            constexpr iterator& operator--() {
+                self->do_decrement(value);
+                return *this;
+            }
+
+            constexpr iterator operator--(int) {
+                iterator copy = *this;
+                self->do_decrement(value);
+                return copy;
+            }
+
+            // ------------------------------------------------
+
             constexpr Begin operator*() const { return value; }
+
+            // ------------------------------------------------
+
+            constexpr static friend iterator operator+(const iterator& s, difference_type i) { return iterator{ static_cast<Begin>(s.value + i), s.self }; }
+            constexpr static friend iterator operator+(difference_type i, const iterator& s) { return iterator{ static_cast<Begin>(i + s.value), s.self }; }
+            constexpr static friend iterator operator-(const iterator& s, difference_type i) { return iterator{ static_cast<Begin>(s.value - i), s.self }; }
+            constexpr static friend iterator operator-(difference_type i, const iterator& s) { return iterator{ static_cast<Begin>(i - s.value), s.self }; }
+
+            // ------------------------------------------------
+
+            constexpr iterator& operator+=(difference_type i) {
+                value += i;
+                return *this;
+            }
+
+            constexpr iterator& operator-=(difference_type i) {
+                value -= i;
+                return *this;
+            }
+
+            // ------------------------------------------------
+
+            constexpr friend difference_type operator-(const iterator& i, const iterator& s) {
+                return i.value - s.value;
+            }
+
+            // ------------------------------------------------
+
+            constexpr bool operator<(const iterator& o) const { return value < o.value; }
+            constexpr bool operator<=(const iterator& o) const { return value <= o.value; }
+            constexpr bool operator>(const iterator& o) const { return value > o.value; }
+            constexpr bool operator>=(const iterator& o) const { return value >= o.value; }
+
+            // ------------------------------------------------
+
+            constexpr reference operator[](difference_type i) const {
+                auto copy = value;
+                self->do_increment(copy, i);
+                return copy;
+            }
 
             // ------------------------------------------------
 
@@ -1102,8 +1192,16 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        constexpr iterator begin() const { return { this, this->beginValue }; }
+        constexpr iterator begin() const { return { this->beginValue, this }; }
         constexpr sentinel end() const { return {}; }
+
+        // ------------------------------------------------
+
+        constexpr Begin operator[](std::size_t i) const {
+            auto copy = this->beginValue;
+            this->do_increment(copy, i);
+            return copy;
+        }
 
         // ------------------------------------------------
 
