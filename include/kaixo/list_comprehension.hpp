@@ -265,12 +265,16 @@ namespace kaixo {
            (unevaluated<As> || ...) // Expressions require at least 1 argument to be unevaluated
         && (!any_range<As> && ...); // Cannot be a range, as this messes with the operator overloads.
     
+    template<class ...As>
+    concept valid_tuple_arguments =
+           (unevaluated<As> || ...); // Tuple operation requires at least 1 argument to be unevaluated
+    
     // ------------------------------------------------
 
     // Tuple operation is an expression resulting in a tuple.
     // This can be constructed using the comma operator.
     template<class ...Args>
-        requires valid_expression_arguments<Args...>
+        requires valid_tuple_arguments<Args...>
     struct tuple_operation {
 
         // ------------------------------------------------
@@ -309,14 +313,14 @@ namespace kaixo {
 
     // Handles default case for tuple operation
     template<class A, class B> 
-        requires valid_expression_arguments<A, B>
+        requires valid_tuple_arguments<A, B>
     constexpr tuple_operation<std::decay_t<A>, std::decay_t<B>> operator,(A&& a, B&& b) {
         return { { std::forward<A>(a), std::forward<B>(b) } };
     }
 
     // Adds to an existing tuple operation
     template<class ...Args, class B> 
-        requires valid_expression_arguments<Args..., B>
+        requires valid_tuple_arguments<Args..., B>
     constexpr tuple_operation<Args..., std::decay_t<B>> operator,(tuple_operation<Args...>&& a, B&& b) {
         return { { std::tuple_cat(std::move(a).args, std::forward_as_tuple(std::forward<B>(b))) } };
     }
@@ -856,7 +860,7 @@ namespace kaixo {
             .expression = std::move(r.expression),
         } };
     }
-    
+
     // ------------------------------------------------
     //                  Zipped Range
     // ------------------------------------------------
