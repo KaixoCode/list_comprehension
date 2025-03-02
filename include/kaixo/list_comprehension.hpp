@@ -464,6 +464,9 @@ namespace kaixo {
 
         // ------------------------------------------------
         
+        using base_iterator = std::ranges::iterator_t<Range>;
+        using base_const_iterator = std::ranges::const_iterator_t<Range>;
+        
         using base_sentinel = std::ranges::sentinel_t<Range>;
         using base_const_sentinel = std::ranges::const_sentinel_t<Range>;
 
@@ -475,7 +478,7 @@ namespace kaixo {
             // ------------------------------------------------
 
             using self_type = std::conditional_t<Const, const named_range<Vars, Range, Expression>, named_range<Vars, Range, Expression>>;
-            using base_iterator = std::conditional_t<Const, std::ranges::const_iterator_t<Range>, std::ranges::iterator_t<Range>>;
+            using base_iterator = std::conditional_t<Const, base_const_iterator, base_iterator>;
             using reference = decltype(std::declval<named_range_storage<Vars, Range, Expression>&>().transform(std::declval<std::iter_reference_t<base_iterator>>()));
             using value_type = std::decay_t<reference>;
             using difference_type = std::iter_difference_t<base_iterator>;
@@ -591,10 +594,15 @@ namespace kaixo {
         // ------------------------------------------------
 
         constexpr iterator_impl<false> begin() { return { std::ranges::begin(this->range), this }; }
-        constexpr iterator_impl<true> begin() const { return { std::ranges::begin(this->range), this }; }
-
         constexpr base_sentinel end() { return std::ranges::end(this->range); }
-        constexpr base_const_sentinel end() const { return std::ranges::end(this->range); }
+
+        constexpr iterator_impl<true> begin() const requires std::ranges::range<const Range> {
+            return { std::ranges::begin(this->range), this };
+        }
+
+        constexpr base_const_sentinel end() const requires std::ranges::range<const Range> { 
+            return std::ranges::end(this->range); 
+        }
 
         // ------------------------------------------------
         
@@ -636,7 +644,7 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-    };
+    }; 
 
     // ------------------------------------------------
     
@@ -1046,22 +1054,22 @@ namespace kaixo {
 
         constexpr void do_increment(Begin& value) const {
             if constexpr (std::same_as<Increment, detail::dud>) ++value;
-            else value += increment;
+            else value += static_cast<Begin>(increment);
         }
 
         constexpr void do_decrement(Begin& value) const {
             if constexpr (std::same_as<Increment, detail::dud>) --value;
-            else value -= increment;
+            else value -= static_cast<Begin>(increment);
         }
         
         constexpr void do_increment(Begin& value, std::ptrdiff_t n) const {
-            if constexpr (std::same_as<Increment, detail::dud>) value += n;
-            else value += n * increment;
+            if constexpr (std::same_as<Increment, detail::dud>) value += static_cast<Begin>(n);
+            else value += static_cast<Begin>(n * increment);
         }
 
         constexpr void do_decrement(Begin& value, std::ptrdiff_t n) const {
-            if constexpr (std::same_as<Increment, detail::dud>) value -= n;
-            else value -= n * increment;
+            if constexpr (std::same_as<Increment, detail::dud>) value -= static_cast<Begin>(n);
+            else value -= static_cast<Begin>(n * increment);
         }
 
         // ------------------------------------------------
@@ -1151,12 +1159,12 @@ namespace kaixo {
             // ------------------------------------------------
 
             constexpr iterator& operator+=(difference_type i) {
-                value += i;
+                self->do_increment(value, i);
                 return *this;
             }
 
             constexpr iterator& operator-=(difference_type i) {
-                value -= i;
+                self->do_decrement(value, i);
                 return *this;
             }
 
@@ -1241,7 +1249,15 @@ namespace kaixo {
     constexpr struct inf_t {} inf;
 
     constexpr static bool operator==(const auto&, inf_t) { return false; }
+    constexpr static bool operator> (const auto&, inf_t) { return false; }
+    constexpr static bool operator>=(const auto&, inf_t) { return false; }
+    constexpr static bool operator< (const auto&, inf_t) { return true;  }
+    constexpr static bool operator<=(const auto&, inf_t) { return true;  }
     constexpr static bool operator==(inf_t, const auto&) { return false; }
+    constexpr static bool operator> (inf_t, const auto&) { return true;  }
+    constexpr static bool operator>=(inf_t, const auto&) { return true;  }
+    constexpr static bool operator< (inf_t, const auto&) { return false; }
+    constexpr static bool operator<=(inf_t, const auto&) { return false; }
 
     // ------------------------------------------------
     //                    Empty
