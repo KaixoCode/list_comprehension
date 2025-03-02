@@ -10,8 +10,7 @@ int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
 
-    auto aoein = (std::max(a, b) | a <- range(0, 10), b <- range(0, 10));
-
-    aoein[1];
+    constexpr auto aoein = (std::max(a, b) | a <- range(0, 10), b <- range(0, 10));
+    constexpr auto sroig = *aoein.begin();
 
 }

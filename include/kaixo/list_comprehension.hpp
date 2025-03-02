@@ -250,10 +250,14 @@ namespace kaixo {
     concept any_range = unevaluated_range<Ty> || evaluated_range<Ty>;
     
     template<class ...As>
+    concept valid_overload_arguments =
+           (unevaluated<As> || ...); // Overloads require at least 1 argument to be unevaluated
+
+    template<class ...As>
     concept valid_expression_arguments =
            (unevaluated<As> || ...) // Expressions require at least 1 argument to be unevaluated
         && (!any_range<As> && ...); // Cannot be a range, as this messes with the operator overloads.
-
+    
     // ------------------------------------------------
 
     // Tuple operation is an expression resulting in a tuple.
@@ -443,7 +447,7 @@ namespace kaixo {
         template<class Self, class Arg>
         constexpr decltype(auto) transform(this Self&& self, Arg&& arg) {
             // First case, no Expression defined, just forward the result
-            if constexpr (std::same_as<Expression, detail::dud>) return static_cast<Arg>(arg);
+            if constexpr (std::same_as<Expression, detail::dud> || !has_all_defines_for<Vars, Expression>) return static_cast<Arg>(arg);
             // Second case, evaluate the expression using the Vars and range result Arg
             else return kaixo::evaluate(std::forward<Self>(self).expression, named_tuple<Vars, Arg&&>{ std::forward<Arg>(arg) });
         }
@@ -460,23 +464,26 @@ namespace kaixo {
 
         // ------------------------------------------------
         
-        using base_iterator = std::ranges::iterator_t<Range>;
         using base_sentinel = std::ranges::sentinel_t<Range>;
+        using base_const_sentinel = std::ranges::const_sentinel_t<Range>;
 
         // ------------------------------------------------
         
-        struct iterator {
+        template<bool Const>
+        struct iterator_impl {
 
             // ------------------------------------------------
 
+            using self_type = std::conditional_t<Const, const named_range<Vars, Range, Expression>, named_range<Vars, Range, Expression>>;
+            using base_iterator = std::conditional_t<Const, std::ranges::const_iterator_t<Range>, std::ranges::iterator_t<Range>>;
             using reference = decltype(std::declval<named_range_storage<Vars, Range, Expression>&>().transform(std::declval<std::iter_reference_t<base_iterator>>()));
             using value_type = std::decay_t<reference>;
             using difference_type = std::iter_difference_t<base_iterator>;
             using iterator_category = std::conditional_t<
-                std::random_access_iterator<base_iterator>, 
+                std::random_access_iterator<base_iterator>,
                 std::random_access_iterator_tag, 
                 std::conditional_t<
-                    std::bidirectional_iterator<base_iterator>, 
+                    std::bidirectional_iterator<base_iterator>,
                     std::bidirectional_iterator_tag, 
                     std::conditional_t<
                         std::forward_iterator<base_iterator>,
@@ -486,28 +493,32 @@ namespace kaixo {
             // ------------------------------------------------
 
             base_iterator base;
-            named_range<Vars, Range, Expression>* self = nullptr;
+            self_type* self = nullptr;
+
+            // ------------------------------------------------
+            
+            constexpr operator iterator_impl<true>() const { return { base, self }; }
 
             // ------------------------------------------------
 
-            constexpr iterator& operator++() {
+            constexpr iterator_impl& operator++() {
                 ++base;
                 return *this;
             }
 
-            constexpr iterator operator++(int) {
-                iterator copy = *this;
+            constexpr iterator_impl operator++(int) {
+                iterator_impl copy = *this;
                 ++base;
                 return copy;
             }
             
-            constexpr iterator& operator--() requires std::bidirectional_iterator<base_iterator> {
+            constexpr iterator_impl& operator--() requires std::bidirectional_iterator<base_iterator> {
                 --base;
                 return *this;
             }
 
-            constexpr iterator operator--(int) requires std::bidirectional_iterator<base_iterator> {
-                iterator copy = *this;
+            constexpr iterator_impl operator--(int) requires std::bidirectional_iterator<base_iterator> {
+                iterator_impl copy = *this;
                 --base;
                 return copy;
             }
@@ -521,42 +532,42 @@ namespace kaixo {
 
             // ------------------------------------------------
 
-            constexpr static friend iterator operator+(const iterator& s, difference_type i) 
-                requires std::ranges::random_access_range<Range> { return iterator{ s.base + i, s.self }; }
+            constexpr static friend iterator_impl operator+(const iterator_impl& s, difference_type i)
+                requires std::ranges::random_access_range<Range> { return iterator_impl{ s.base + i, s.self }; }
             
-            constexpr static friend iterator operator+(difference_type i, const iterator& s) 
-                requires std::ranges::random_access_range<Range> { return iterator{ i + s.base, s.self }; }
+            constexpr static friend iterator_impl operator+(difference_type i, const iterator_impl& s)
+                requires std::ranges::random_access_range<Range> { return iterator_impl{ i + s.base, s.self }; }
             
-            constexpr static friend iterator operator-(const iterator& s, difference_type i) 
-                requires std::ranges::random_access_range<Range> { return iterator{ s.base - i, s.self }; }
+            constexpr static friend iterator_impl operator-(const iterator_impl& s, difference_type i)
+                requires std::ranges::random_access_range<Range> { return iterator_impl{ s.base - i, s.self }; }
             
-            constexpr static friend iterator operator-(difference_type i, const iterator& s) 
-                requires std::ranges::random_access_range<Range> { return iterator{ i - s.base, s.self }; }
+            constexpr static friend iterator_impl operator-(difference_type i, const iterator_impl& s)
+                requires std::ranges::random_access_range<Range> { return iterator_impl{ i - s.base, s.self }; }
 
             // ------------------------------------------------
 
-            constexpr iterator& operator+=(difference_type i) requires std::ranges::random_access_range<Range> {
+            constexpr iterator_impl& operator+=(difference_type i) requires std::ranges::random_access_range<Range> {
                 base += i;
                 return *this;
             }
 
-            constexpr iterator& operator-=(difference_type i) requires std::ranges::random_access_range<Range> {
+            constexpr iterator_impl& operator-=(difference_type i) requires std::ranges::random_access_range<Range> {
                 base -= i;
                 return *this;
             }
 
             // ------------------------------------------------
 
-            constexpr friend difference_type operator-(const iterator& i, const iterator& s) requires std::ranges::random_access_range<Range> {
+            constexpr friend difference_type operator-(const iterator_impl& i, const iterator_impl& s) requires std::ranges::random_access_range<Range> {
                 return i.base - s.base;
             }
 
             // ------------------------------------------------
 
-            constexpr bool operator<(const iterator& o) const requires std::ranges::random_access_range<Range> { return base < o.base; }
-            constexpr bool operator<=(const iterator& o) const requires std::ranges::random_access_range<Range> { return base <= o.base; }
-            constexpr bool operator>(const iterator& o) const requires std::ranges::random_access_range<Range> { return base > o.base; }
-            constexpr bool operator>=(const iterator& o) const requires std::ranges::random_access_range<Range> { return base >= o.base; }
+            constexpr bool operator<(const iterator_impl& o) const requires std::ranges::random_access_range<Range> { return base < o.base; }
+            constexpr bool operator<=(const iterator_impl& o) const requires std::ranges::random_access_range<Range> { return base <= o.base; }
+            constexpr bool operator>(const iterator_impl& o) const requires std::ranges::random_access_range<Range> { return base > o.base; }
+            constexpr bool operator>=(const iterator_impl& o) const requires std::ranges::random_access_range<Range> { return base >= o.base; }
 
             // ------------------------------------------------
 
@@ -573,9 +584,17 @@ namespace kaixo {
         };
         
         // ------------------------------------------------
+        
+        using iterator = iterator_impl<false>;
+        using const_iterator = iterator_impl<true>;
 
-        constexpr iterator begin() { return { std::ranges::begin(this->range), this }; }
+        // ------------------------------------------------
+
+        constexpr iterator_impl<false> begin() { return { std::ranges::begin(this->range), this }; }
+        constexpr iterator_impl<true> begin() const { return { std::ranges::begin(this->range), this }; }
+
         constexpr base_sentinel end() { return std::ranges::end(this->range); }
+        constexpr base_const_sentinel end() const { return std::ranges::end(this->range); }
 
         // ------------------------------------------------
 
@@ -1220,7 +1239,7 @@ namespace std {
 
 #define KAIXO_FUNCTION_OVERLOAD(name)                                                \
     template<class... Args>                                                          \
-        requires kaixo::valid_expression_arguments<Args...>                          \
+        requires kaixo::valid_overload_arguments<Args...>                            \
     struct kaixo_##name##_overload {                                                 \
         using defines = kaixo::var<>;                                                \
         using depends = kaixo::unique_t<kaixo::concat_t<kaixo::depends_t<Args>...>>; \
@@ -1236,8 +1255,8 @@ namespace std {
     };                                                                               \
                                                                                      \
     template<class... Args>                                                          \
-        requires kaixo::valid_expression_arguments<Args...>                          \
-    constexpr kaixo_##name##_overload<Args...> name(Args&& ...args) {                \
+        requires kaixo::valid_overload_arguments<Args...>                            \
+    constexpr kaixo_##name##_overload<std::decay_t<Args>...> name(Args&& ...args) {  \
         return { .args = { std::forward<Args>(args)... } };                          \
     }
 
