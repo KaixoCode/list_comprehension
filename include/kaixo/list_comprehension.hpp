@@ -44,7 +44,7 @@ namespace kaixo {
         constexpr auto flatten_tuple(Ty&& t) {
             if constexpr (requires { typename std::tuple_size<std::decay_t<Ty>>::type; }) {
                 return[&]<std::size_t ...Is>(std::index_sequence<Is...>) {
-                    return std::tuple_cat(flatten_tuple(static_cast<std::tuple_element_t<Is, std::decay_t<Ty>>&&>(std::get<Is>(t)))...);
+                    return std::tuple_cat(flatten_tuple(static_cast<std::tuple_element_t<Is, std::decay_t<Ty>>>(std::get<Is>(t)))...);
                 }(std::make_index_sequence<std::tuple_size_v<std::decay_t<Ty>>>{});
             } else return std::tuple<Ty>{ std::forward<Ty>(t) };
         }
@@ -55,25 +55,30 @@ namespace kaixo {
 
     // ------------------------------------------------
 
-    template<std::size_t I, class Tuple>
-    constexpr auto recursive_get(Tuple&& tuple)
-        -> std::tuple_element_t<I, decltype(detail::flatten_tuple(tuple))> 
-    {
-        return std::get<I>(detail::flatten_tuple(tuple));
-    }
-
     template<class Tuple>
     constexpr std::size_t recursive_tuple_size_v = std::tuple_size_v<decltype(detail::flatten_tuple(std::declval<Tuple>()))>;
-    
+
     template<std::size_t I, class Tuple>
     using recursive_tuple_element_t = std::tuple_element_t<I, decltype(detail::flatten_tuple(std::declval<Tuple>()))>;
+
+    template<std::size_t I, class Tuple>
+    constexpr recursive_tuple_element_t<I, Tuple&&> recursive_get(Tuple&& tuple) {
+        return std::get<I>(detail::flatten_tuple(tuple));
+    }
 
     // ------------------------------------------------
     //                      Var
     // ------------------------------------------------
 
+    template<class V>
+    concept is_var = requires { typename std::decay_t<V>::is_var; };
+
     template<class... Vars>
     struct var {
+
+        // ------------------------------------------------
+        
+        using is_var = int;
 
         // ------------------------------------------------
 
@@ -834,7 +839,7 @@ namespace kaixo {
 
     // Handles default case for a range filter
     template<class Vars, evaluated_range Range, class Expression, valid_expression_arguments Condition>
-        requires has_all_defines_for<Vars, Condition>
+        requires (has_all_defines_for<Vars, Condition> && !is_var<Condition>)
     constexpr auto operator,(named_range<Vars, Range, Expression>&& r, Condition&& c)
         -> named_range<Vars, std::ranges::filter_view<Range, range_filter<Vars, Condition>>, Expression> 
     {
@@ -849,8 +854,9 @@ namespace kaixo {
     //  - Continues building upon an unevaluated range, need to cache all parts
     //  - Encounters Condition which can not be evaluated using Vars
     template<class Vars, class Range, class Expression, valid_expression_arguments Condition>
-        requires (unevaluated_range<Range> // Case 1
-               || evaluated_range<Range> && !has_all_defines_for<Vars, Condition>) // Case 2
+        requires (!is_var<Condition> &&
+                 (unevaluated_range<Range> // Case 1
+               || evaluated_range<Range> && !has_all_defines_for<Vars, Condition>)) // Case 2
     constexpr auto operator,(named_range<Vars, Range, Expression>&& r, Condition&& c)
         -> named_range<Vars, unevaluated_cache<named_range<Vars, Range>, Condition>, Expression>
     {

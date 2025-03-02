@@ -30,6 +30,10 @@ namespace kaixo {
 int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
+    
+    std::map<int, int> data{ { 1, 2 }, { 3, 4 }, { 5, 6 } };
+    auto r3 = (value + a | ((key, value), a) <- (data, range(0, 5)));
+    for (auto v : r3) std::println("{}", v);
 
     auto query = (
         SELECT a, b, c 
@@ -45,12 +49,12 @@ int main() {
     
     auto query2 = (
         SELECT 
-            a, 
             (   SELECT d 
-                FROM range(0, b) AS d
+                FROM range(0, a) AS d
                 WHERE d % 2 == 0
                   AND d != 0
             ), 
+            b,
             c
         FROM range(1, 11) AS c, 
              range(1,  c) AS b, 
@@ -59,8 +63,8 @@ int main() {
     );
 
     for (auto [a, b, c] : query2) {
-        std::println("({}, {})", a, c);
-        for (auto d : b) {
+        std::println("({}, {})", b, c);
+        for (auto d : a) {
             std::println("{}", d);
         }
     }
