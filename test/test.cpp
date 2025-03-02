@@ -49,12 +49,13 @@ int main() {
     
     auto query2 = (
         SELECT 
+            a,
             (   SELECT d 
                 FROM range(0, a) AS d
                 WHERE d % 2 == 0
                   AND d != 0
             ), 
-            b,
+            b + 1,
             c
         FROM range(1, 11) AS c, 
              range(1,  c) AS b, 
@@ -62,9 +63,9 @@ int main() {
         WHERE a * a + b * b == c * c
     );
 
-    for (auto [a, b, c] : query2) {
-        std::println("({}, {})", b, c);
-        for (auto d : a) {
+    for (auto [a, range, b, c] : query2) {
+        std::println("({}, {}, {})", a, b, c);
+        for (auto d : range) {
             std::println("{}", d);
         }
     }

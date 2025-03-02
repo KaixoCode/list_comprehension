@@ -70,15 +70,8 @@ namespace kaixo {
     //                      Var
     // ------------------------------------------------
 
-    template<class V>
-    concept is_var = requires { typename std::decay_t<V>::is_var; };
-
     template<class... Vars>
     struct var {
-
-        // ------------------------------------------------
-        
-        using is_var = int;
 
         // ------------------------------------------------
 
@@ -839,7 +832,7 @@ namespace kaixo {
 
     // Handles default case for a range filter
     template<class Vars, evaluated_range Range, class Expression, valid_expression_arguments Condition>
-        requires (has_all_defines_for<Vars, Condition> && !is_var<Condition>)
+        requires has_all_defines_for<Vars, Condition>
     constexpr auto operator,(named_range<Vars, Range, Expression>&& r, Condition&& c)
         -> named_range<Vars, std::ranges::filter_view<Range, range_filter<Vars, Condition>>, Expression> 
     {
@@ -854,9 +847,8 @@ namespace kaixo {
     //  - Continues building upon an unevaluated range, need to cache all parts
     //  - Encounters Condition which can not be evaluated using Vars
     template<class Vars, class Range, class Expression, valid_expression_arguments Condition>
-        requires (!is_var<Condition> &&
-                 (unevaluated_range<Range> // Case 1
-               || evaluated_range<Range> && !has_all_defines_for<Vars, Condition>)) // Case 2
+        requires (unevaluated_range<Range> // Case 1
+               || evaluated_range<Range> && !has_all_defines_for<Vars, Condition>) // Case 2
     constexpr auto operator,(named_range<Vars, Range, Expression>&& r, Condition&& c)
         -> named_range<Vars, unevaluated_cache<named_range<Vars, Range>, Condition>, Expression>
     {
