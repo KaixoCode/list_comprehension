@@ -18,8 +18,8 @@ int main() {
     
     std::vector<int> primes{};
 
-    auto generatePrimes = (a <- range(2, inf), is_empty((b <- primes, b < a, a % b == 0)), primes << a);
-
+    auto generatePrimes = (a <- range(2, inf), is_empty((b <- primes, b <= std::sqrt(a), a % b == 0)), primes << a);
+    
     for (auto prime : generatePrimes) {
         std::println("{}", prime);
     }
