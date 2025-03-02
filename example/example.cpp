@@ -1,18 +1,13 @@
 #include "kaixo/list_comprehension.hpp"
 
+#include <algorithm>
 #include <map>
 #include <vector>
 #include <print>
 
 int main() {
     using namespace kaixo;
-
-    constexpr auto a = var<struct A>{};
-    constexpr auto b = var<struct B>{};
-    constexpr auto c = var<struct C>{};
-    constexpr auto x = var<struct X>{};
-    constexpr auto key = var<struct Key>{};
-    constexpr auto value = var<struct Value>{};
+    using namespace kaixo::variables;
 
     // Normal list comprehension stuff with multiple ranges, some constraints, and the output. 
     // In this case the output is a tuple of 3 ints. This will create a std::vector<std::tuple<int, int, int>> 
@@ -36,8 +31,8 @@ int main() {
     // been given an overload for expr<Type>, so you can use them in the constraints or in the 
     // result expression. This example takes the pairs from the vector, and results in a vector 
     // with the biggest of the 2 values in the tuple.
-    //auto r4 = (max(a, b) | (a, b) <- std::array<std::pair<int, int>, 3>{ { { 1, 5 }, { 5, 4 }, { 3, 4 } } });
-    //print(r4);
+    auto r4 = (std::max(a, b) | (a, b) <- std::array<std::pair<int, int>, 3>{ { { 1, 5 }, { 5, 4 }, { 3, 4 } } });
+    for (auto v : r4) std::println("{}", v);
 
     // Lazy evaluation! You can create an infinite list
     constexpr auto r5 = (a | a <- range(0, inf));

@@ -1,30 +1,32 @@
-cmake_minimum_required (VERSION 3.0)
-project (list_comprehension)
+
+# ==============================================
+
+cmake_minimum_required(VERSION 3.0)
+project(list_comprehension)
+
+# ==============================================
 
 set (CMAKE_CXX_STANDARD 23)
 
+# ==============================================
+
 option(BUILD_LIST_COMPREHENSION_EXAMPLE "Build the list comprehension example project" false)
+option(BUILD_LIST_COMPREHENSION_TEST "Build the list comprehension test project" false)
 
-if (TARGET list_comprehension)
-else()
-file(GLOB_RECURSE SOURCE
-  "${list_comprehension_SOURCE_DIR}/include/*.hpp"
-)
+# ==============================================
 
-add_library(list_comprehension ${SOURCE})
-set_target_properties(list_comprehension PROPERTIES LINKER_LANGUAGE CXX)
-endif()
+include_directories(list_comprehension_example "${CMAKE_CURRENT_SOURCE_DIR}/include/")
+
+# ==============================================
 
 if (${BUILD_LIST_COMPREHENSION_EXAMPLE})
-if (TARGET list_comprehension_example)
-else()
-add_executable(list_comprehension_example
-  ${list_comprehension_SOURCE_DIR}/example.cpp
-)
+add_executable(list_comprehension_example "${CMAKE_CURRENT_SOURCE_DIR}/example/example.cpp")
+endif()
 
-target_include_directories(list_comprehension_example PRIVATE
-  ${list_comprehension_SOURCE_DIR}/include/
-  ${type_utils_SOURCE_DIR}/include/
-)
+# ==============================================
+
+if (${BUILD_LIST_COMPREHENSION_TEST})
+add_executable(list_comprehension_test "${list_comprehension_SOURCE_DIR}/test/test.cpp")
 endif()
-endif()
+
+# ==============================================

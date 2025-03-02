@@ -1160,11 +1160,438 @@ namespace kaixo {
     // ------------------------------------------------
 
     template<unevaluated_range Range>
-    constexpr auto is_empty(Range&& range) {
+    constexpr empty_operation<Range> is_empty(Range&& range) {
         return empty_operation<Range>{
             .range = std::forward<Range>(range) 
         };
     }
+
+    // ------------------------------------------------
+    //          Basic variable definitions
+    // ------------------------------------------------
+
+    namespace variables {
+        constexpr auto a = var<struct variable_a>{};
+        constexpr auto b = var<struct variable_b>{};
+        constexpr auto c = var<struct variable_c>{};
+        constexpr auto d = var<struct variable_d>{};
+        constexpr auto e = var<struct variable_e>{};
+        constexpr auto f = var<struct variable_f>{};
+        constexpr auto g = var<struct variable_g>{};
+        constexpr auto h = var<struct variable_h>{};
+        constexpr auto i = var<struct variable_i>{};
+        constexpr auto j = var<struct variable_j>{};
+        constexpr auto k = var<struct variable_k>{};
+        constexpr auto l = var<struct variable_l>{};
+        constexpr auto m = var<struct variable_m>{};
+        constexpr auto n = var<struct variable_n>{};
+        constexpr auto o = var<struct variable_o>{};
+        constexpr auto p = var<struct variable_p>{};
+        constexpr auto q = var<struct variable_q>{};
+        constexpr auto r = var<struct variable_r>{};
+        constexpr auto s = var<struct variable_s>{};
+        constexpr auto t = var<struct variable_t>{};
+        constexpr auto u = var<struct variable_u>{};
+        constexpr auto v = var<struct variable_v>{};
+        constexpr auto w = var<struct variable_w>{};
+        constexpr auto x = var<struct variable_x>{};
+        constexpr auto y = var<struct variable_y>{};
+        constexpr auto z = var<struct variable_z>{};
+        constexpr auto _ = var<detail::dud>{};
+
+        constexpr auto key   = var<struct Key>{};
+        constexpr auto value = var<struct Value>{};
+    }
+
+    // ------------------------------------------------
+
+}
+
+// ------------------------------------------------
+
+namespace std {
+
+    // ------------------------------------------------
+    //            std function overloads
+    // ------------------------------------------------
+    //  Empty expression checks whether an unevaluated
+    //  range is empty when evaluated on the fly.
+    // ------------------------------------------------
+
+#define KAIXO_FUNCTION_OVERLOAD(name)                                                \
+    template<class... Args>                                                          \
+        requires kaixo::valid_expression_arguments<Args...>                          \
+    struct kaixo_##name##_overload {                                                 \
+        using defines = kaixo::var<>;                                                \
+        using depends = kaixo::unique_t<kaixo::concat_t<kaixo::depends_t<Args>...>>; \
+                                                                                     \
+        std::tuple<Args...> args;                                                    \
+                                                                                     \
+        template<class Self, class Tuple>                                            \
+        constexpr decltype(auto) evaluate(this Self&& self, Tuple&& tuple) {         \
+            return std::apply([&]<class ...Tys>(Tys&& ...tys) {                      \
+                return name(kaixo::evaluate(std::forward<Tys>(tys), tuple)...);      \
+            }, std::forward<Self>(self).args);                                       \
+        }                                                                            \
+    };                                                                               \
+                                                                                     \
+    template<class... Args>                                                          \
+        requires kaixo::valid_expression_arguments<Args...>                          \
+    constexpr kaixo_##name##_overload<Args...> name(Args&& ...args) {                \
+        return { .args = { std::forward<Args>(args)... } };                          \
+    }
+
+    // ------------------------------------------------
+
+    // <functional>
+    KAIXO_FUNCTION_OVERLOAD(bind_front);
+    KAIXO_FUNCTION_OVERLOAD(bind);
+    KAIXO_FUNCTION_OVERLOAD(ref);
+    KAIXO_FUNCTION_OVERLOAD(cref);
+    KAIXO_FUNCTION_OVERLOAD(invoke);
+
+    // ------------------------------------------------
+
+    // <any>
+    KAIXO_FUNCTION_OVERLOAD(any_cast);
+    KAIXO_FUNCTION_OVERLOAD(make_any);
+
+    // ------------------------------------------------
+
+    // <algorithm>
+    KAIXO_FUNCTION_OVERLOAD(adjacent_find);
+    KAIXO_FUNCTION_OVERLOAD(binary_search);
+    KAIXO_FUNCTION_OVERLOAD(bsearch);
+    KAIXO_FUNCTION_OVERLOAD(clamp);
+    KAIXO_FUNCTION_OVERLOAD(copy_backward);
+    KAIXO_FUNCTION_OVERLOAD(copy_n);
+    KAIXO_FUNCTION_OVERLOAD(count);
+    KAIXO_FUNCTION_OVERLOAD(count_if);
+    KAIXO_FUNCTION_OVERLOAD(equal);
+    KAIXO_FUNCTION_OVERLOAD(equal_range);
+    KAIXO_FUNCTION_OVERLOAD(fill);
+    KAIXO_FUNCTION_OVERLOAD(fill_n);
+    KAIXO_FUNCTION_OVERLOAD(find);
+    KAIXO_FUNCTION_OVERLOAD(find_end);
+    KAIXO_FUNCTION_OVERLOAD(find_first_of);
+    KAIXO_FUNCTION_OVERLOAD(find_if);
+    KAIXO_FUNCTION_OVERLOAD(find_if_not);
+    KAIXO_FUNCTION_OVERLOAD(for_each);
+    KAIXO_FUNCTION_OVERLOAD(for_each_n);
+    KAIXO_FUNCTION_OVERLOAD(generate);
+    KAIXO_FUNCTION_OVERLOAD(generate_n);
+    KAIXO_FUNCTION_OVERLOAD(includes);
+    KAIXO_FUNCTION_OVERLOAD(inplace_merge);
+    KAIXO_FUNCTION_OVERLOAD(iter_swap);
+    KAIXO_FUNCTION_OVERLOAD(lexicographical_compare);
+    KAIXO_FUNCTION_OVERLOAD(lower_bound);
+    KAIXO_FUNCTION_OVERLOAD(make_heap);
+    KAIXO_FUNCTION_OVERLOAD(max);
+    KAIXO_FUNCTION_OVERLOAD(max_element);
+    KAIXO_FUNCTION_OVERLOAD(merge);
+    KAIXO_FUNCTION_OVERLOAD(min);
+    KAIXO_FUNCTION_OVERLOAD(min_element);
+    KAIXO_FUNCTION_OVERLOAD(minmax);
+    KAIXO_FUNCTION_OVERLOAD(minmax_element);
+    KAIXO_FUNCTION_OVERLOAD(mismatch);
+    KAIXO_FUNCTION_OVERLOAD(move);
+    KAIXO_FUNCTION_OVERLOAD(move_backward);
+    KAIXO_FUNCTION_OVERLOAD(next_permutation);
+    KAIXO_FUNCTION_OVERLOAD(nth_element);
+    KAIXO_FUNCTION_OVERLOAD(partial_sort);
+    KAIXO_FUNCTION_OVERLOAD(partial_sort_copy);
+    KAIXO_FUNCTION_OVERLOAD(partition);
+    KAIXO_FUNCTION_OVERLOAD(partition_copy);
+    KAIXO_FUNCTION_OVERLOAD(partition_point);
+    KAIXO_FUNCTION_OVERLOAD(pop_heap);
+    KAIXO_FUNCTION_OVERLOAD(prev_permutation);
+    KAIXO_FUNCTION_OVERLOAD(push_heap);
+    KAIXO_FUNCTION_OVERLOAD(qsort);
+    KAIXO_FUNCTION_OVERLOAD(remove);
+    KAIXO_FUNCTION_OVERLOAD(remove_copy);
+    KAIXO_FUNCTION_OVERLOAD(replace);
+    KAIXO_FUNCTION_OVERLOAD(replace_copy);
+    KAIXO_FUNCTION_OVERLOAD(replace_copy_if);
+    KAIXO_FUNCTION_OVERLOAD(reverse);
+    KAIXO_FUNCTION_OVERLOAD(reverse_copy);
+    KAIXO_FUNCTION_OVERLOAD(rotate);
+    KAIXO_FUNCTION_OVERLOAD(rotate_copy);
+    KAIXO_FUNCTION_OVERLOAD(sample);
+    KAIXO_FUNCTION_OVERLOAD(search);
+    KAIXO_FUNCTION_OVERLOAD(search_n);
+    KAIXO_FUNCTION_OVERLOAD(shift_left);
+    KAIXO_FUNCTION_OVERLOAD(shift_right);
+    KAIXO_FUNCTION_OVERLOAD(set_difference);
+    KAIXO_FUNCTION_OVERLOAD(set_intersection);
+    KAIXO_FUNCTION_OVERLOAD(set_symmetric_difference);
+    KAIXO_FUNCTION_OVERLOAD(set_union);
+    KAIXO_FUNCTION_OVERLOAD(sort);
+    KAIXO_FUNCTION_OVERLOAD(sort_heap);
+    KAIXO_FUNCTION_OVERLOAD(stable_partition);
+    KAIXO_FUNCTION_OVERLOAD(stable_sort);
+    KAIXO_FUNCTION_OVERLOAD(swap);
+    KAIXO_FUNCTION_OVERLOAD(swap_ranges);
+    KAIXO_FUNCTION_OVERLOAD(transform);
+    KAIXO_FUNCTION_OVERLOAD(unique);
+    KAIXO_FUNCTION_OVERLOAD(unique_copy);
+    KAIXO_FUNCTION_OVERLOAD(upper_bound);
+
+    // ------------------------------------------------
+
+    // <iterator>
+    KAIXO_FUNCTION_OVERLOAD(advance);
+    KAIXO_FUNCTION_OVERLOAD(back_inserter);
+    KAIXO_FUNCTION_OVERLOAD(begin);
+    KAIXO_FUNCTION_OVERLOAD(data);
+    KAIXO_FUNCTION_OVERLOAD(distance);
+    KAIXO_FUNCTION_OVERLOAD(empty);
+    KAIXO_FUNCTION_OVERLOAD(end);
+    KAIXO_FUNCTION_OVERLOAD(front_inserter);
+    KAIXO_FUNCTION_OVERLOAD(inserter);
+    KAIXO_FUNCTION_OVERLOAD(make_move_iterator);
+    KAIXO_FUNCTION_OVERLOAD(make_reverse_iterator);
+    KAIXO_FUNCTION_OVERLOAD(next);
+    KAIXO_FUNCTION_OVERLOAD(prev);
+    KAIXO_FUNCTION_OVERLOAD(rbegin);
+    KAIXO_FUNCTION_OVERLOAD(rend);
+    KAIXO_FUNCTION_OVERLOAD(size);
+
+    // ------------------------------------------------
+
+    // <memory>, <memory_resource>
+    KAIXO_FUNCTION_OVERLOAD(addressof);
+    KAIXO_FUNCTION_OVERLOAD(align);
+    KAIXO_FUNCTION_OVERLOAD(assume_aligned);
+    KAIXO_FUNCTION_OVERLOAD(calloc);
+    KAIXO_FUNCTION_OVERLOAD(free);
+    KAIXO_FUNCTION_OVERLOAD(malloc);
+    KAIXO_FUNCTION_OVERLOAD(realloc);
+    KAIXO_FUNCTION_OVERLOAD(destroy);
+    KAIXO_FUNCTION_OVERLOAD(destroy_at);
+    KAIXO_FUNCTION_OVERLOAD(destroy_n);
+    KAIXO_FUNCTION_OVERLOAD(make_obj_using_allocator);
+    KAIXO_FUNCTION_OVERLOAD(to_address);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_construct_using_allocator);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_copy);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_copy_n);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_default_construct);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_default_construct_n);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_fill);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_fill_n);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_move);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_move_n);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_value_construct);
+    KAIXO_FUNCTION_OVERLOAD(uninitialized_value_construct_n);
+
+    // ------------------------------------------------
+
+    // <numeric>
+    KAIXO_FUNCTION_OVERLOAD(accumulate);
+    KAIXO_FUNCTION_OVERLOAD(adjacent_difference);
+    KAIXO_FUNCTION_OVERLOAD(inclusive_scan);
+    KAIXO_FUNCTION_OVERLOAD(inner_product);
+    KAIXO_FUNCTION_OVERLOAD(iota);
+    KAIXO_FUNCTION_OVERLOAD(reduce);
+    KAIXO_FUNCTION_OVERLOAD(partial_sum);
+    KAIXO_FUNCTION_OVERLOAD(transform_exclusive_scan);
+    KAIXO_FUNCTION_OVERLOAD(transform_inclusive_scan);
+    KAIXO_FUNCTION_OVERLOAD(transform_reduce);
+    KAIXO_FUNCTION_OVERLOAD(bit_cast);
+    KAIXO_FUNCTION_OVERLOAD(gcd);
+    KAIXO_FUNCTION_OVERLOAD(lcm);
+    KAIXO_FUNCTION_OVERLOAD(lerp);
+    KAIXO_FUNCTION_OVERLOAD(abs);
+    KAIXO_FUNCTION_OVERLOAD(acos);
+    KAIXO_FUNCTION_OVERLOAD(acosh);
+    KAIXO_FUNCTION_OVERLOAD(asin);
+    KAIXO_FUNCTION_OVERLOAD(asinh);
+    KAIXO_FUNCTION_OVERLOAD(atan);
+    KAIXO_FUNCTION_OVERLOAD(atan2);
+    KAIXO_FUNCTION_OVERLOAD(atanh);
+    KAIXO_FUNCTION_OVERLOAD(cbrt);
+    KAIXO_FUNCTION_OVERLOAD(ceil);
+    KAIXO_FUNCTION_OVERLOAD(copysign);
+    KAIXO_FUNCTION_OVERLOAD(cos);
+    KAIXO_FUNCTION_OVERLOAD(cosh);
+    KAIXO_FUNCTION_OVERLOAD(div);
+    KAIXO_FUNCTION_OVERLOAD(erf);
+    KAIXO_FUNCTION_OVERLOAD(erfc);
+    KAIXO_FUNCTION_OVERLOAD(exp);
+    KAIXO_FUNCTION_OVERLOAD(exp2);
+    KAIXO_FUNCTION_OVERLOAD(expm1);
+    KAIXO_FUNCTION_OVERLOAD(fabs);
+    KAIXO_FUNCTION_OVERLOAD(fdim);
+    KAIXO_FUNCTION_OVERLOAD(floor);
+    KAIXO_FUNCTION_OVERLOAD(fma);
+    KAIXO_FUNCTION_OVERLOAD(fmax);
+    KAIXO_FUNCTION_OVERLOAD(fmin);
+    KAIXO_FUNCTION_OVERLOAD(fmod);
+    KAIXO_FUNCTION_OVERLOAD(fpclassify);
+    KAIXO_FUNCTION_OVERLOAD(frexp);
+    KAIXO_FUNCTION_OVERLOAD(hypot);
+    KAIXO_FUNCTION_OVERLOAD(ilogb);
+    KAIXO_FUNCTION_OVERLOAD(isfinite);
+    KAIXO_FUNCTION_OVERLOAD(isgreater);
+    KAIXO_FUNCTION_OVERLOAD(isgreaterequal);
+    KAIXO_FUNCTION_OVERLOAD(isinf);
+    KAIXO_FUNCTION_OVERLOAD(isless);
+    KAIXO_FUNCTION_OVERLOAD(islessequal);
+    KAIXO_FUNCTION_OVERLOAD(islessgreater);
+    KAIXO_FUNCTION_OVERLOAD(isnan);
+    KAIXO_FUNCTION_OVERLOAD(isnormal);
+    KAIXO_FUNCTION_OVERLOAD(isunordered);
+    KAIXO_FUNCTION_OVERLOAD(ldexp);
+    KAIXO_FUNCTION_OVERLOAD(lgamma);
+    KAIXO_FUNCTION_OVERLOAD(log);
+    KAIXO_FUNCTION_OVERLOAD(log10);
+    KAIXO_FUNCTION_OVERLOAD(log1p);
+    KAIXO_FUNCTION_OVERLOAD(log2);
+    KAIXO_FUNCTION_OVERLOAD(logb);
+    KAIXO_FUNCTION_OVERLOAD(modf);
+    KAIXO_FUNCTION_OVERLOAD(nan);
+    KAIXO_FUNCTION_OVERLOAD(nearbyint);
+    KAIXO_FUNCTION_OVERLOAD(nextafter);
+    KAIXO_FUNCTION_OVERLOAD(pow);
+    KAIXO_FUNCTION_OVERLOAD(remainder);
+    KAIXO_FUNCTION_OVERLOAD(remquo);
+    KAIXO_FUNCTION_OVERLOAD(rint);
+    KAIXO_FUNCTION_OVERLOAD(round);
+    KAIXO_FUNCTION_OVERLOAD(scalbn);
+    KAIXO_FUNCTION_OVERLOAD(signbit);
+    KAIXO_FUNCTION_OVERLOAD(sin);
+    KAIXO_FUNCTION_OVERLOAD(sinh);
+    KAIXO_FUNCTION_OVERLOAD(sqrt);
+    KAIXO_FUNCTION_OVERLOAD(tan);
+    KAIXO_FUNCTION_OVERLOAD(tanh);
+    KAIXO_FUNCTION_OVERLOAD(tgamma);
+    KAIXO_FUNCTION_OVERLOAD(trunc);
+    KAIXO_FUNCTION_OVERLOAD(midpoint);
+    KAIXO_FUNCTION_OVERLOAD(assoc_laguerre);
+    KAIXO_FUNCTION_OVERLOAD(assoc_legendre);
+    KAIXO_FUNCTION_OVERLOAD(beta);
+    KAIXO_FUNCTION_OVERLOAD(comp_ellint_1);
+    KAIXO_FUNCTION_OVERLOAD(comp_ellint_2);
+    KAIXO_FUNCTION_OVERLOAD(comp_ellint_3);
+    KAIXO_FUNCTION_OVERLOAD(cyl_bessel_i);
+    KAIXO_FUNCTION_OVERLOAD(cyl_bessel_j);
+    KAIXO_FUNCTION_OVERLOAD(cyl_bessel_k);
+    KAIXO_FUNCTION_OVERLOAD(cyl_neumann);
+    KAIXO_FUNCTION_OVERLOAD(ellint_1);
+    KAIXO_FUNCTION_OVERLOAD(ellint_2);
+    KAIXO_FUNCTION_OVERLOAD(ellint_3);
+    KAIXO_FUNCTION_OVERLOAD(expint);
+    KAIXO_FUNCTION_OVERLOAD(hermite);
+    KAIXO_FUNCTION_OVERLOAD(laguerre);
+    KAIXO_FUNCTION_OVERLOAD(legendre);
+    KAIXO_FUNCTION_OVERLOAD(riemann_zeta);
+    KAIXO_FUNCTION_OVERLOAD(sph_bessel);
+    KAIXO_FUNCTION_OVERLOAD(sph_legendre);
+    KAIXO_FUNCTION_OVERLOAD(sph_neumann);
+
+    // ------------------------------------------------
+
+    // <string>, <cstring>, <cwctype>, <cuchar>
+    KAIXO_FUNCTION_OVERLOAD(atof);
+    KAIXO_FUNCTION_OVERLOAD(atoi);
+    KAIXO_FUNCTION_OVERLOAD(isalnum);
+    KAIXO_FUNCTION_OVERLOAD(isalpha);
+    KAIXO_FUNCTION_OVERLOAD(isblank);
+    KAIXO_FUNCTION_OVERLOAD(iscntrl);
+    KAIXO_FUNCTION_OVERLOAD(isdigit);
+    KAIXO_FUNCTION_OVERLOAD(isgraph);
+    KAIXO_FUNCTION_OVERLOAD(islower);
+    KAIXO_FUNCTION_OVERLOAD(isprint);
+    KAIXO_FUNCTION_OVERLOAD(ispunct);
+    KAIXO_FUNCTION_OVERLOAD(isspace);
+    KAIXO_FUNCTION_OVERLOAD(isupper);
+    KAIXO_FUNCTION_OVERLOAD(isxdigit);
+    KAIXO_FUNCTION_OVERLOAD(memchr);
+    KAIXO_FUNCTION_OVERLOAD(memcmp);
+    KAIXO_FUNCTION_OVERLOAD(memcpy);
+    KAIXO_FUNCTION_OVERLOAD(memmove);
+    KAIXO_FUNCTION_OVERLOAD(memset);
+    KAIXO_FUNCTION_OVERLOAD(strcat);
+    KAIXO_FUNCTION_OVERLOAD(strchr);
+    KAIXO_FUNCTION_OVERLOAD(strcmp);
+    KAIXO_FUNCTION_OVERLOAD(strcoll);
+    KAIXO_FUNCTION_OVERLOAD(strcpy);
+    KAIXO_FUNCTION_OVERLOAD(strcspn);
+    KAIXO_FUNCTION_OVERLOAD(strerror);
+    KAIXO_FUNCTION_OVERLOAD(strlen);
+    KAIXO_FUNCTION_OVERLOAD(strncat);
+    KAIXO_FUNCTION_OVERLOAD(strncmp);
+    KAIXO_FUNCTION_OVERLOAD(strncpy);
+    KAIXO_FUNCTION_OVERLOAD(strpbrk);
+    KAIXO_FUNCTION_OVERLOAD(strrchr);
+    KAIXO_FUNCTION_OVERLOAD(strspn);
+    KAIXO_FUNCTION_OVERLOAD(strstr);
+    KAIXO_FUNCTION_OVERLOAD(strtof);
+    KAIXO_FUNCTION_OVERLOAD(strtok);
+    KAIXO_FUNCTION_OVERLOAD(strtol);
+    KAIXO_FUNCTION_OVERLOAD(strtoul);
+    KAIXO_FUNCTION_OVERLOAD(strxfrm);
+    KAIXO_FUNCTION_OVERLOAD(tolower);
+    KAIXO_FUNCTION_OVERLOAD(toupper);
+    KAIXO_FUNCTION_OVERLOAD(copy);
+    KAIXO_FUNCTION_OVERLOAD(btowc);
+    KAIXO_FUNCTION_OVERLOAD(c16rtomb);
+    KAIXO_FUNCTION_OVERLOAD(c32rtomb);
+    KAIXO_FUNCTION_OVERLOAD(mblen);
+    KAIXO_FUNCTION_OVERLOAD(mbrlen);
+    KAIXO_FUNCTION_OVERLOAD(mbrtoc16);
+    KAIXO_FUNCTION_OVERLOAD(mbrtoc32);
+    KAIXO_FUNCTION_OVERLOAD(mbrtowc);
+    KAIXO_FUNCTION_OVERLOAD(mbsinit);
+    KAIXO_FUNCTION_OVERLOAD(mbsrtowcs);
+    KAIXO_FUNCTION_OVERLOAD(mbstowcs);
+    KAIXO_FUNCTION_OVERLOAD(mbtowc);
+    KAIXO_FUNCTION_OVERLOAD(wcrtomb);
+    KAIXO_FUNCTION_OVERLOAD(wcsrtombs);
+    KAIXO_FUNCTION_OVERLOAD(wcstombs);
+    KAIXO_FUNCTION_OVERLOAD(wctob);
+    KAIXO_FUNCTION_OVERLOAD(wctomb);
+    KAIXO_FUNCTION_OVERLOAD(iswalnum);
+    KAIXO_FUNCTION_OVERLOAD(iswalpha);
+    KAIXO_FUNCTION_OVERLOAD(iswblank);
+    KAIXO_FUNCTION_OVERLOAD(iswcntrl);
+    KAIXO_FUNCTION_OVERLOAD(iswctype);
+    KAIXO_FUNCTION_OVERLOAD(iswdigit);
+    KAIXO_FUNCTION_OVERLOAD(iswgraph);
+    KAIXO_FUNCTION_OVERLOAD(iswlower);
+    KAIXO_FUNCTION_OVERLOAD(iswprint);
+    KAIXO_FUNCTION_OVERLOAD(iswpunct);
+    KAIXO_FUNCTION_OVERLOAD(iswspace);
+    KAIXO_FUNCTION_OVERLOAD(iswupper);
+    KAIXO_FUNCTION_OVERLOAD(iswxdigit);
+    KAIXO_FUNCTION_OVERLOAD(towctrans);
+    KAIXO_FUNCTION_OVERLOAD(towlower);
+    KAIXO_FUNCTION_OVERLOAD(towupper);
+    KAIXO_FUNCTION_OVERLOAD(wcscat);
+    KAIXO_FUNCTION_OVERLOAD(wcschr);
+    KAIXO_FUNCTION_OVERLOAD(wcscmp);
+    KAIXO_FUNCTION_OVERLOAD(wcscoll);
+    KAIXO_FUNCTION_OVERLOAD(wcscpy);
+    KAIXO_FUNCTION_OVERLOAD(wcscspn);
+    KAIXO_FUNCTION_OVERLOAD(wcslen);
+    KAIXO_FUNCTION_OVERLOAD(wcsncat);
+    KAIXO_FUNCTION_OVERLOAD(wcsncmp);
+    KAIXO_FUNCTION_OVERLOAD(wcsncpy);
+    KAIXO_FUNCTION_OVERLOAD(wcspbrk);
+    KAIXO_FUNCTION_OVERLOAD(wcsrchr);
+    KAIXO_FUNCTION_OVERLOAD(wcsspn);
+    KAIXO_FUNCTION_OVERLOAD(wcsstr);
+    KAIXO_FUNCTION_OVERLOAD(wcstof);
+    KAIXO_FUNCTION_OVERLOAD(wcstok);
+    KAIXO_FUNCTION_OVERLOAD(wcstol);
+    KAIXO_FUNCTION_OVERLOAD(wcstoul);
+    KAIXO_FUNCTION_OVERLOAD(wcsxfrm);
+    KAIXO_FUNCTION_OVERLOAD(wctrans);
+    KAIXO_FUNCTION_OVERLOAD(wctype);
+    KAIXO_FUNCTION_OVERLOAD(wmemchr);
+    KAIXO_FUNCTION_OVERLOAD(wmemcmp);
+    KAIXO_FUNCTION_OVERLOAD(wmemcpy);
+    KAIXO_FUNCTION_OVERLOAD(wmemmove);
+    KAIXO_FUNCTION_OVERLOAD(wmemset);
 
     // ------------------------------------------------
 
