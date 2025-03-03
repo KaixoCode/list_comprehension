@@ -31,43 +31,6 @@ namespace kaixo {
 #define AND and
 #define AS >>
 
-struct CopyChecker {
-    mutable std::stacktrace trace = std::stacktrace::current();
-    mutable std::size_t line{};
-    mutable std::size_t column{};
-    mutable int copies = 0;
-    mutable int moves = 0;
-
-    CopyChecker() = default;
-
-    CopyChecker(const CopyChecker& c)
-        : copies(c.copies + 1)
-    {
-        c.copies++;
-        c.trace = trace;
-    }
-
-    CopyChecker(CopyChecker&& c)
-        : moves(c.moves + 1) 
-    {
-        c.moves++;
-    }
-
-    CopyChecker& operator=(const CopyChecker& c) {
-        trace = std::stacktrace::current();
-        c.trace = trace;
-        c.copies++;
-        copies++;
-        return *this; 
-    }
-
-    CopyChecker& operator=(CopyChecker&& c) {
-        c.copies++;
-        moves++; 
-        return *this; 
-    }
-};
-
 constexpr kaixo::var<struct name> name;
 constexpr kaixo::var<struct age> age;
 constexpr kaixo::var<struct person> person;
@@ -85,15 +48,12 @@ int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
 
-    std::vector<std::string> names{ "a", "b", "c" };
+    std::vector<int> av{};
+    std::vector<int> bv{};
 
-    auto cs = (b | a <- names, b <- a);
+    const auto oiane = std::views::cartesian_product(av | std::views::filter([](auto& a) -> decltype(auto) { return a; }), bv);
+    oiane.begin();
 
-    for (auto& c : cs) {
-        std::print("{}", c);
-    }
-
-    /*
     std::array people{
         Person{ .id = 0, .name = "John",  .age = 36, .friends = { 1, 2 } },
         Person{ .id = 1, .name = "Harry", .age = 22, .friends = { 0, 2 } },
@@ -142,8 +102,6 @@ int main() {
     for (auto& firstFriend : query3) {
         std::println("{}", firstFriend);
     }
-    
-
 
     return 0;
 
@@ -213,5 +171,47 @@ int main() {
         //    std::println("{}", prime);
         //}
     }
-    */
 }
+
+
+using namespace kaixo;
+using namespace kaixo::variables;
+
+constexpr std::array<std::string_view, 3> strings{ "abc", "pqr", "xyz" };
+constexpr char c1 = *(b | a <- strings, b <- a).begin();
+static_assert(c1 == 'a');
+constexpr char c2 = *++(b | a <- strings, b <- a).begin();
+static_assert(c2 == 'b');
+constexpr char c3 = *++++(b | a <- strings, b <- a).begin();
+static_assert(c3 == 'c');
+constexpr char c4 = *++++++(b | a <- strings, b <- a).begin();
+static_assert(c4 == 'p');
+constexpr char c5 = *++++++++(b | a <- strings, b <- a).begin();
+static_assert(c5 == 'q');
+constexpr char c6 = *++++++++++(b | a <- strings, b <- a).begin();
+static_assert(c6 == 'r');
+constexpr char c7 = *++++++++++++(b | a <- strings, b <- a).begin();
+static_assert(c7 == 'x');
+constexpr char c8 = *++++++++++++++(b | a <- strings, b <- a).begin();
+static_assert(c8 == 'y');
+constexpr char c9 = *++++++++++++++++(b | a <- strings, b <- a).begin();
+static_assert(c9 == 'z');
+
+struct cmchecker {
+    int copies = 0;
+    int moves = 0;
+    constexpr int total() const { return copies + moves; }
+    constexpr cmchecker() = default;
+    constexpr cmchecker(const cmchecker& c) : copies(c.copies + 1) {}
+    constexpr cmchecker(cmchecker&& c) noexcept : moves(c.moves + 1)  {}
+    constexpr cmchecker& operator=(const cmchecker& c) { copies = c.copies + 1; return *this;  }
+    constexpr cmchecker& operator=(cmchecker&& c) noexcept { moves = c.moves + 1; return *this; }
+};
+
+constexpr std::array<cmchecker, 3> checkers{};
+constexpr int cmtotal1 = (a | a <- checkers)[0].total();
+static_assert(cmtotal1 == 0);
+constexpr int cmtotal2 = (*(b | a <- range(0, 3), b <- (d | c <- range(0, a), d <- checkers)).begin()).total();
+static_assert(cmtotal2 == 0);
+constexpr int cmtotal3 = ((b | b <- checkers)[a] | a <- range(0, 3))[2].total();
+static_assert(cmtotal3 == 0);

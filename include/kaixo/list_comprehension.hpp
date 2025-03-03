@@ -296,7 +296,7 @@ namespace kaixo {
            (unevaluated<As> || ...); // Tuple operation requires at least 1 argument to be unevaluated
     
     // ------------------------------------------------
-
+    
     // Tuple operation is an expression resulting in a tuple.
     // This can be constructed using the comma operator.
     template<class ...Args>
@@ -350,7 +350,7 @@ namespace kaixo {
     constexpr tuple_operation<Args..., std::decay_t<B>> operator,(tuple_operation<Args...>&& a, B&& b) {
         return { { std::tuple_cat(std::move(a).args, std::forward_as_tuple(std::forward<B>(b))) } };
     }
-
+    
     // ------------------------------------------------
 
     // Binary operation overloads all binary operators for expressions.
@@ -403,7 +403,7 @@ namespace kaixo {
     KAIXO_BINARY_OP(/ , divide);  KAIXO_BINARY_OP(>= , greater_or_equals); KAIXO_BINARY_OP(|| , logic_or);   KAIXO_BINARY_OP(&=, bit_and_assign);
     KAIXO_BINARY_OP(%, modulo);   KAIXO_BINARY_OP(+=, add_assign);         KAIXO_BINARY_OP(== , equals);     KAIXO_BINARY_OP(|=, bit_or_assign);
     KAIXO_BINARY_OP(&, bit_and);  KAIXO_BINARY_OP(-=, subtract_assign);    KAIXO_BINARY_OP(!= , not_equals); KAIXO_BINARY_OP(^=, bit_xor_assign);
-
+    
     // ------------------------------------------------
 
     // Unary operation overloads all unary operators for expressions.
@@ -450,7 +450,7 @@ namespace kaixo {
     KAIXO_UNARY_OP(++, increment);
     KAIXO_UNARY_OP(--, decrement);
     KAIXO_UNARY_OP(!, logic_not);
-    KAIXO_UNARY_OP(&, pointer);
+    //KAIXO_UNARY_OP(&, pointer);
     KAIXO_UNARY_OP(*, dereference);
     
     // ------------------------------------------------
@@ -459,7 +459,7 @@ namespace kaixo {
     //  Allows the index operator to be used inside
     //  expressions.
     // ------------------------------------------------
-
+    
     template<unevaluated Expression, class Class, class Type>
     struct member_operation;
 
@@ -630,17 +630,17 @@ namespace kaixo {
     };
     
     // ------------------------------------------------
-
+    
     template<class Vars, evaluated_range Range, class Expression> // Evaluated version
         requires (Vars::size == recursive_tuple_size_v<std::ranges::range_value_t<Range>> && has_all_defines_for<Vars, Expression>)
     struct named_range<Vars, Range, Expression> : named_range_storage<Vars, Range, Expression> {
 
         // ------------------------------------------------
         
-        using base_iterator = std::ranges::iterator_t<Range>;
-        using base_sentinel = std::ranges::sentinel_t<Range>;
-        using base_const_iterator = std::ranges::const_iterator_t<Range>;
-        using base_const_sentinel = std::ranges::const_sentinel_t<Range>;
+        using base_iterator = decltype(std::ranges::begin(std::declval<named_range_storage<Vars, Range, Expression>&>().range));
+        using base_sentinel = decltype(std::ranges::end(std::declval<named_range_storage<Vars, Range, Expression>&>().range));
+        using base_const_iterator = decltype(std::ranges::begin(std::declval<const named_range_storage<Vars, Range, Expression>&>().range));
+        using base_const_sentinel = decltype(std::ranges::end(std::declval<const named_range_storage<Vars, Range, Expression>&>().range));
 
         // ------------------------------------------------
         
@@ -651,9 +651,9 @@ namespace kaixo {
 
             // ------------------------------------------------
 
-            using self_type = std::conditional_t<Const, const named_range<Vars, Range, Expression>, named_range<Vars, Range, Expression>>;
-            using base_iterator = std::conditional_t<Const, base_const_iterator, base_iterator>;
-            using reference = decltype(std::declval<named_range_storage<Vars, Range, Expression>&>().transform(std::declval<std::iter_reference_t<base_iterator>>()));
+            using self_type = std::conditional_t<Const, const named_range_storage<Vars, Range, Expression>, named_range_storage<Vars, Range, Expression>>;
+            using base_iterator_type = std::conditional_t<Const, base_const_iterator, base_iterator>;
+            using reference = decltype(std::declval<self_type&>().transform(std::declval<std::iter_reference_t<base_iterator_type>>()));
             using value_type = std::decay_t<reference>;
             using difference_type = std::iter_difference_t<base_iterator>;
             using iterator_category = std::conditional_t<
@@ -669,7 +669,7 @@ namespace kaixo {
 
             // ------------------------------------------------
 
-            base_iterator base;
+            base_iterator_type base;
             self_type* self = nullptr;
 
             // ------------------------------------------------
@@ -689,12 +689,12 @@ namespace kaixo {
                 return copy;
             }
             
-            constexpr iterator_impl& operator--() requires std::bidirectional_iterator<base_iterator> {
+            constexpr iterator_impl& operator--() requires std::ranges::bidirectional_range<Range> {
                 --base;
                 return *this;
             }
 
-            constexpr iterator_impl operator--(int) requires std::bidirectional_iterator<base_iterator> {
+            constexpr iterator_impl operator--(int) requires std::ranges::bidirectional_range<Range> {
                 iterator_impl copy = *this;
                 --base;
                 return copy;
@@ -767,17 +767,10 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        constexpr iterator_impl<false> begin() { return { std::ranges::begin(this->range), this }; }
+        constexpr iterator begin() { return { std::ranges::begin(this->range), this }; }
         constexpr base_sentinel end() { return std::ranges::end(this->range); }
-
-        // Not all ranges also support iteration when they're const
-        constexpr iterator_impl<true> begin() const requires std::ranges::range<const Range> {
-            return { std::ranges::begin(this->range), this };
-        }
-
-        constexpr base_const_sentinel end() const requires std::ranges::range<const Range> {
-            return std::ranges::end(this->range); 
-        }
+        constexpr const_iterator begin() const { return { std::ranges::begin(this->range), this }; }
+        constexpr base_const_sentinel end() const { return std::ranges::end(this->range); }
 
         // ------------------------------------------------
         
@@ -791,6 +784,16 @@ namespace kaixo {
             requires std::ranges::random_access_range<Range>
         constexpr decltype(auto) operator[](this Self&& self, std::size_t i) {
             return std::forward<Self>(self).transform(std::forward<Self>(self).range[i]);
+        }
+        
+        // ------------------------------------------------
+        
+        template<class Self, class Index>
+        constexpr index_operation<named_range, std::decay_t<Index>> operator[](this Self&& self, Index&& index) {
+            return {
+                .expression = std::forward<Self>(self), 
+                .index = std::forward<Index>(index),
+            };
         }
 
         // ------------------------------------------------
@@ -818,6 +821,16 @@ namespace kaixo {
                 .range = std::views::all(kaixo::evaluate(std::forward<Self>(self).range, tuple)),
                 .expression = kaixo::evaluate(std::forward<Self>(self).expression, tuple),
             } };
+        }
+
+        // ------------------------------------------------
+        
+        template<class Self, class Index>
+        constexpr index_operation<named_range, std::decay_t<Index>> operator[](this Self&& self, Index&& index) {
+            return {
+                .expression = std::forward<Self>(self), 
+                .index = std::forward<Index>(index),
+            };
         }
 
         // ------------------------------------------------
@@ -1519,7 +1532,7 @@ namespace kaixo {
     }
 
     // ------------------------------------------------
-
+    
 }
 
 // ------------------------------------------------
