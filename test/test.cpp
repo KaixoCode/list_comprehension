@@ -84,8 +84,6 @@ struct Person {
 int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
-    
-    kaixo::named_range<var<struct AAA>, std::ranges::owning_view<range<int, int>>> afaef{ {.range = { { 1, 1 } } } };
 
     std::array people{
         Person{ .id = 0, .name = "John",  .age = 36, .friends = { 1, 2 } },
@@ -93,7 +91,7 @@ int main() {
         Person{ .id = 2, .name = "Larry", .age = 55, .friends = { 2, 3 } },
         Person{ .id = 3, .name = "Sam",   .age = 15, .friends = { 1 } },
     };
-
+        
     auto query = (
         SELECT 
             person[&Person::name], 
@@ -109,9 +107,11 @@ int main() {
     );
 
     for (auto [name, age, friends] : query) {
-        auto aefa = std::views::join_with(friends, " and ");
-        std::println("{} is {} years old, and is friends with",
-            name, age);
+        std::print("{} is {} years old and is friends with ", name, age);
+        for (auto& frend : std::views::join_with(friends, " and ")) {
+            std::print("{}", frend);
+        }
+        std::println("");
     }
     
     return 0;
