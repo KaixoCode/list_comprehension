@@ -114,8 +114,6 @@ int main() {
         std::println("");
     }
     
-    return 0;
-
     auto query2 = (
         SELECT person[&Person::name]
         FROM people                   AS person,
@@ -125,6 +123,15 @@ int main() {
 
     for (auto& name : query2) {
         std::println("{} is friends with himself", name);
+    }
+    
+    auto query3 = (
+        SELECT person[&Person::friends][0]
+        FROM people AS person
+    );
+
+    for (auto& firstFriend : query3) {
+        std::println("{}", firstFriend);
     }
     
     return 0;

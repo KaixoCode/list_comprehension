@@ -209,24 +209,11 @@ namespace kaixo {
     // ------------------------------------------------
 
     template<class Ty>
-    concept is_named_range = requires { typename std::decay_t<Ty>::is_named_range; };
-
-    template<class Ty>
     concept unevaluated = depends_t<std::decay_t<Ty>>::size != 0;
     
     template<class Ty, class Tuple> 
         requires (!unevaluated<Ty>)
     constexpr auto evaluate(Ty&& o, Tuple&&) { return std::forward<Ty>(o); }
-
-    template<std::ranges::range Ty>
-        requires (!is_named_range<Ty>)
-    constexpr auto wrap_if_range(Ty&& o) { return std::views::all(std::forward<Ty>(o)); }
-    
-    template<class Ty>
-    constexpr auto wrap_if_range(Ty&& o) { return std::forward<Ty>(o); }
-
-    template<class Ty>
-    using wrapped_t = decltype(wrap_if_range(std::declval<Ty&&>()));
 
     template<unevaluated Ty, class Tuple> 
         requires requires (Ty&& o, Tuple&& v) { { o.evaluate(v) }; }
@@ -469,7 +456,8 @@ namespace kaixo {
     // ------------------------------------------------
     //                Index Operation
     // ------------------------------------------------
-    //  Access a class member inside an expression
+    //  Allows the index operator to be used inside
+    //  expressions.
     // ------------------------------------------------
 
     template<unevaluated Expression, class Class, class Type>
@@ -495,14 +483,15 @@ namespace kaixo {
         constexpr decltype(auto) evaluate(this Self&& self, Tuple&& tuple) {
             using evaluated1_t = decltype(kaixo::evaluate(std::declval<Self&&>().expression, std::declval<Tuple&>()));
             using evaluated2_t = decltype(kaixo::evaluate(std::declval<Self&&>().index, std::declval<Tuple&>()));
+            // First case, either the expression or the index is still unevaluated, return new index operation
             if constexpr (unevaluated<evaluated1_t> || unevaluated<evaluated2_t>) {
                 return index_operation<evaluated1_t, evaluated2_t>{
                     .expression = kaixo::evaluate(std::forward<Self>(self).expression, tuple),
                     .index = kaixo::evaluate(std::forward<Self>(self).index, tuple),
                 };
-            } else {
-                return wrap(kaixo::evaluate(std::forward<Self>(self).expression, tuple)[kaixo::evaluate(std::forward<Self>(self).index, tuple)]);
             }
+            // Second case, both expression and index are fully evaluated
+            else return kaixo::evaluate(std::forward<Self>(self).expression, tuple)[kaixo::evaluate(std::forward<Self>(self).index, tuple)];
         }
 
         // ------------------------------------------------
@@ -559,14 +548,15 @@ namespace kaixo {
         template<class Self, class Tuple>
         constexpr decltype(auto) evaluate(this Self&& self, Tuple&& tuple) {
             using evaluated_t = decltype(kaixo::evaluate(std::declval<Self&&>().expression, std::declval<Tuple&>()));
+            // First case, result still not fully evaluated, so return another member operation
             if constexpr (unevaluated<evaluated_t>) {
                 return member_operation<evaluated_t, Class, Type>{
                     .expression = kaixo::evaluate(std::forward<Self>(self).expression, tuple),
                     .ptr = std::forward<Self>(self).ptr,
                 };
-            } else {
-                return (kaixo::evaluate(std::forward<Self>(self).expression, tuple).*(std::forward<Self>(self).ptr));
-            }
+            } 
+            // Second case, fully evaluated, so access the member
+            else return kaixo::evaluate(std::forward<Self>(self).expression, tuple).*(std::forward<Self>(self).ptr);
         }
 
         // ------------------------------------------------
@@ -619,7 +609,6 @@ namespace kaixo {
         // ------------------------------------------------
 
         using is_range = int;
-        using is_named_range = int;
 
         // ------------------------------------------------
 
@@ -824,12 +813,8 @@ namespace kaixo {
             } };
             // Second case, result is fully evaluated, wrap in an 'all_t', which will store 
             // it as either an owning_view or a ref_view.
-            //else return named_range<Vars, std::views::all_t<evaluated_t>, expression_t> { {
-            //    .range = std::views::all(kaixo::evaluate(std::forward<Self>(self).range, tuple)),
-            //    .expression = kaixo::evaluate(std::forward<Self>(self).expression, tuple),
-            //} };
-            else return named_range<Vars, wrapped_t<evaluated_t>, expression_t> { {
-                .range = kaixo::wrap_if_range(kaixo::evaluate(std::forward<Self>(self).range, tuple)),
+            else return named_range<Vars, std::views::all_t<evaluated_t>, expression_t> { {
+                .range = std::views::all(kaixo::evaluate(std::forward<Self>(self).range, tuple)),
                 .expression = kaixo::evaluate(std::forward<Self>(self).expression, tuple),
             } };
         }
@@ -863,9 +848,6 @@ namespace kaixo {
             .range = std::forward<Range>(range),
         } };
     }
-
-    template<class ...V1s, class ...V2s>
-    constexpr named_range<var<V1s...>, var<V2s...>> operator<(var<V1s...>, var<V2s...>) { return {}; }
 
     // ------------------------------------------------
     
@@ -911,9 +893,7 @@ namespace kaixo {
             // for each result of the parent range. This is done as follows:
             return std::views::transform(
                 // First step is to evaluate the unevaluated range, we know Vars is
-                // enough to fully evaluate the range, so this results in an evaluated range
-                // Wrap this inside an owning_view or ref_view using 'all', as transform
-                // might need this.
+                // enough to fully evaluate the range, so this results in an evaluated range.
                 kaixo::evaluate(std::forward<Self>(self).range, named_tuple<Vars, Tuple&&>{ std::forward<Tuple>(tuple) }), 
                 // Then combine the results of the now evaluated range with the original
                 // results passed to this evaluator. This creates a cartesian product.
