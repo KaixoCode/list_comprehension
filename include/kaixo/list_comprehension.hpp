@@ -632,7 +632,7 @@ namespace kaixo {
     // ------------------------------------------------
 
     template<class Vars, evaluated_range Range, class Expression> // Evaluated version
-        requires (Vars::size == recursive_tuple_size_v<std::ranges::range_value_t<Range>>)
+        requires (Vars::size == recursive_tuple_size_v<std::ranges::range_value_t<Range>> && has_all_defines_for<Vars, Expression>)
     struct named_range<Vars, Range, Expression> : named_range_storage<Vars, Range, Expression> {
 
         // ------------------------------------------------
@@ -775,7 +775,7 @@ namespace kaixo {
             return { std::ranges::begin(this->range), this };
         }
 
-        constexpr base_const_sentinel end() const requires std::ranges::range<const Range> { 
+        constexpr base_const_sentinel end() const requires std::ranges::range<const Range> {
             return std::ranges::end(this->range); 
         }
 
@@ -797,7 +797,8 @@ namespace kaixo {
 
     };
     
-    template<class Vars, unevaluated Range, class Expression> // Unevaluated version
+    template<class Vars, class Range, class Expression> // Unevaluated version
+        requires (unevaluated<Range> || !has_all_defines_for<Vars, Expression>)
     struct named_range<Vars, Range, Expression> : named_range_storage<Vars, Range, Expression> {
 
         // ------------------------------------------------
@@ -889,16 +890,17 @@ namespace kaixo {
 
         template<class Self, class Tuple>
         constexpr auto operator()(this Self&& self, Tuple&& tuple) {
+            using tuple_t = decltype(detail::store_as_tuple(std::declval<Tuple&&>()));
             // This operator evaluates this unevaluated range on the fly
             // for each result of the parent range. This is done as follows:
             return std::views::transform(
                 // First step is to evaluate the unevaluated range, we know Vars is
                 // enough to fully evaluate the range, so this results in an evaluated range.
-                kaixo::evaluate(std::forward<Self>(self).range, named_tuple<Vars, Tuple&&>{ std::forward<Tuple>(tuple) }), 
+                std::views::all(kaixo::evaluate(std::forward<Self>(self).range, named_tuple<Vars, Tuple&&>{ std::forward<Tuple>(tuple) })), 
                 // Then combine the results of the now evaluated range with the original
                 // results passed to this evaluator. This creates a cartesian product.
                 [tuple = detail::store_as_tuple(std::forward<Tuple>(tuple))]<class R>(R && r) {
-                    return std::make_tuple(tuple, std::forward<R>(r));
+                    return std::tuple<tuple_t, R>(tuple, std::forward<R>(r));
                 }
             );
         }
@@ -949,8 +951,8 @@ namespace kaixo {
         template<class Self, class Tuple>
         constexpr auto evaluate(this Self&& self, Tuple&& tuple) {
             return operator,(
-                copy_if_reference(kaixo::evaluate(std::forward<Self>(self).a, tuple)),
-                copy_if_reference(kaixo::evaluate(std::forward<Self>(self).b, tuple)));
+                kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                kaixo::evaluate(std::forward<Self>(self).b, tuple));
         }
 
         // ------------------------------------------------

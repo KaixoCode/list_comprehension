@@ -85,6 +85,15 @@ int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
 
+    std::vector<std::string> names{ "a", "b", "c" };
+
+    auto cs = (b | a <- names, b <- a);
+
+    for (auto& c : cs) {
+        std::print("{}", c);
+    }
+
+    /*
     std::array people{
         Person{ .id = 0, .name = "John",  .age = 36, .friends = { 1, 2 } },
         Person{ .id = 1, .name = "Harry", .age = 22, .friends = { 0, 2 } },
@@ -134,6 +143,8 @@ int main() {
         std::println("{}", firstFriend);
     }
     
+
+
     return 0;
 
 
@@ -202,4 +213,5 @@ int main() {
         //    std::println("{}", prime);
         //}
     }
+    */
 }
