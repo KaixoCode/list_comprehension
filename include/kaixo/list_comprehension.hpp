@@ -70,6 +70,9 @@ namespace kaixo {
     //                      Var
     // ------------------------------------------------
 
+    template<class Ty>
+    concept is_var = requires { typename std::decay_t<Ty>::is_var; };
+
     template<class... Vars>
     struct var {
 
@@ -77,6 +80,10 @@ namespace kaixo {
 
         using defines = var<>;
         using depends = var;
+
+        // ------------------------------------------------
+        
+        using is_var = int;
 
         // ------------------------------------------------
 
@@ -91,19 +98,19 @@ namespace kaixo {
 
         template<class Tuple>
         constexpr static decltype(auto) evaluate(Tuple&& v) {
-            using defines = std::decay_t<Tuple>::defines;
+            using tplDefines = std::decay_t<Tuple>::defines;
             // Only a single var, returns single value
             if constexpr (size == 1) {
                 using Var = std::type_identity_t<Vars...>;
                 // First case, variable is 'dud', used for ignoring a value with '_'.
                 if constexpr (std::same_as<Var, detail::dud>) return detail::dud{};
                 // Second case, variable is not defined by input tuple, return var (remains unevaluated)
-                else if constexpr (defines::template index<Var> == npos) return var{};
+                else if constexpr (tplDefines::template index<Var> == npos) return var{};
                 // Third case, get the value from the tuple
                 else return v.template get<Var>();
             } 
             // Otherwise multiple vars; ff none of the vars stay unevaluated, return resulting tuple.
-            else if constexpr (((defines::template index<Vars> != npos) && ...)) {
+            else if constexpr (((tplDefines::template index<Vars> != npos) && ...)) {
                 return std::tuple<decltype(var<Vars>::evaluate(std::forward<Tuple>(v)))...>{
                     var<Vars>::evaluate(std::forward<Tuple>(v))...
                 };
@@ -246,13 +253,19 @@ namespace kaixo {
     // ------------------------------------------------
 
     template<class Ty>
-    concept unevaluated_range = unevaluated<Ty> && requires() { typename std::decay_t<Ty>::is_range; };
+    concept explicit_unevaluated_range = unevaluated<Ty> && requires() { typename std::decay_t<Ty>::is_range; };
+    
+    template<class Ty>
+    concept unevaluated_range = is_var<Ty> || explicit_unevaluated_range<Ty>;
 
     template<class Ty>
     concept evaluated_range = !unevaluated<Ty> && std::ranges::range<Ty>;
     
     template<class Ty>
     concept any_range = unevaluated_range<Ty> || evaluated_range<Ty>;
+    
+    template<class Ty>
+    concept explicit_range = explicit_unevaluated_range<Ty> || evaluated_range<Ty>;
     
     template<class ...As>
     concept valid_overload_arguments =
@@ -261,7 +274,7 @@ namespace kaixo {
     template<class ...As>
     concept valid_expression_arguments =
            (unevaluated<As> || ...) // Expressions require at least 1 argument to be unevaluated
-        && (!any_range<As> && ...); // Cannot be a range, as this messes with the operator overloads.
+        && (!explicit_range<As> && ...); // Cannot be a range, as this messes with the operator overloads.
     
     template<class ...As>
     concept valid_tuple_arguments =
@@ -454,15 +467,15 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        Range range;
-        [[no_unique_address]] Expression expression;
+        Range range{};
+        [[no_unique_address]] Expression expression{};
 
         // ------------------------------------------------
 
         template<class Self, class Arg>
         constexpr decltype(auto) transform(this Self&& self, Arg&& arg) {
-            // First case, no Expression defined, or can't fully evaluate the expression, just forward the result
-            if constexpr (std::same_as<Expression, detail::dud> || !has_all_defines_for<Vars, Expression>) return static_cast<Arg>(arg);
+            // First case, no Expression defined, just forward the result
+            if constexpr (std::same_as<Expression, detail::dud>) return static_cast<Arg>(arg);
             // Second case, evaluate the expression using the Vars and range result Arg
             else return kaixo::evaluate(std::forward<Self>(self).expression, named_tuple<Vars, Arg&&>{ std::forward<Arg>(arg) });
         }
@@ -674,6 +687,9 @@ namespace kaixo {
         return std::views::all(std::forward<Range>(range));
     }
 
+    template<class ...Vars>
+    constexpr var<Vars...> operator-(var<Vars...>) { return {}; }
+
     // The other instance of '-' operator, for unevaluated
     // ranges. Since we can't do much here, just forward.
     // It's wrapped into an owning_view or ref_view later
@@ -688,6 +704,9 @@ namespace kaixo {
             .range = std::forward<Range>(range),
         } };
     }
+
+    template<class ...V1s, class ...V2s>
+    constexpr named_range<var<V1s...>, var<V2s...>> operator<(var<V1s...>, var<V2s...>) { return {}; }
 
     // ------------------------------------------------
     
@@ -873,7 +892,7 @@ namespace kaixo {
     };
     
     template<class ...Ranges> // Unevaluated version
-        requires (unevaluated_range<Ranges> || ...)
+        requires (explicit_unevaluated_range<Ranges> || ...)
     struct zip_range<Ranges...> : std::tuple<Ranges...> {
 
         // ------------------------------------------------
@@ -907,6 +926,7 @@ namespace kaixo {
 
     // Construct the zip range
     template<any_range A, any_range B>
+        requires (explicit_range<A> || explicit_range<B>)
     constexpr zip_range<A, B> operator,(A&& a, B&& b) {
         return zip_range<A, B>{ std::forward<A>(a), std::forward<B>(b) };
     }

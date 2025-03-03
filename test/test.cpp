@@ -1,9 +1,11 @@
-#include "kaixo/list_comprehension.hpp"
 
 #include <algorithm>
 #include <map>
 #include <vector>
 #include <print>
+#include <string>
+
+#include "kaixo/list_comprehension.hpp"
 
 namespace kaixo {
     template<evaluated_range Range, class ...Vars>
@@ -31,6 +33,16 @@ int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
     
+    std::vector<std::string> names{ "John", "Harry", "James" };
+
+    auto cs = (b | a <- names, b <- a, std::islower(b));
+
+    for (auto c : cs) {
+        std::print("{}", c);
+    }
+
+    return 0;
+
     std::map<int, int> data{ { 1, 2 }, { 3, 4 }, { 5, 6 } };
     auto r3 = (value + a | ((key, value), a) <- (data, range(0, 5)));
     for (auto v : r3) std::println("{}", v);
@@ -49,7 +61,7 @@ int main() {
     
     auto query2 = (
         SELECT 
-            a,
+            a + 0,
             (   SELECT d 
                 FROM range(0, a) AS d
                 WHERE d % 2 == 0
