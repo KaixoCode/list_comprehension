@@ -29,9 +29,9 @@ int main() {
     for (auto v : r3) std::print("{}, ", v); std::println("");
 
     // Calling standard functions in an expression. Most of the functions in the standard have 
-    // been given an overload for expr<Type>, so you can use them in the constraints or in the 
-    // result expression. This example takes the pairs from the vector, and results in a vector 
-    // with the biggest of the 2 values in the tuple.
+    // been given an overload for unevaluated arguments, so you can use them in the constraints 
+    // or in the result expression. This example takes the pairs from the array, and takes the 
+    // biggest of the 2 values in the pair.
     auto r4 = (std::max(a, b) | (a, b) <- std::array<std::pair<int, int>, 3>{ { { 1, 5 }, { 5, 4 }, { 3, 4 } } });
     for (auto v : r4) std::print("{}, ", v); std::println("");
 
