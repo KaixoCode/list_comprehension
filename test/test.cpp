@@ -63,11 +63,18 @@ int main() {
     //
     //decltype(srgsrgs)::defines::size;
 
-    std::vector<std::string> names{};
-    constexpr auto aefa1 = ((a, +range(0, a), +range(0, 1)) | a <- range(0, 10))[0];
-    constexpr auto aefa2 = ((+(b | b <- range(0, a)), a) | a <- range(0, 10))[0];
-    auto aefa3 = ((a, b, c) | a <- names, (b, c) <- (a, range(0, 10)));
+    //std::vector<std::string> names{};
+    //constexpr auto aefa1 = ((a, +range(0, a), +range(0, 1)) | a <- range(0, 10))[0];
+    //constexpr auto aefa2 = ((+(b | b <- range(0, a)), a) | a <- range(0, 10))[0];
+    //auto aefa3 = ((a, b, c) | a <- names, (b, c) <- (a, range(0, 10)));
 
+    //auto aonei = (b, d) <- ((c, +range(0, a)) | c <- range(0, 10));
+
+    auto gsrgsr = ((a, b, d) | a <- range(0, 10), (b, d) <- ((c, +range(0, a)) | c <- range(0, 10)));
+
+    for (auto a : gsrgsr) {
+
+    }
 
     /*
 

@@ -312,8 +312,7 @@ namespace kaixo {
     
     template<class ...As>
     concept valid_tuple_arguments =
-           (unevaluated<As> || ...) // Tuple operation requires at least 1 argument to be unevaluated
-        && (!explicit_range<As> && ...); // Cannot be a range, as this messes with the operator overloads.
+           (unevaluated<As> || ...); // Tuple operation requires at least 1 argument to be unevaluated
     
     // ------------------------------------------------
     
@@ -359,7 +358,7 @@ namespace kaixo {
 
     // Handles default case for tuple operation
     template<class A, class B> 
-        requires valid_tuple_arguments<A, B>
+        requires valid_expression_arguments<A, B>
     constexpr tuple_operation<std::decay_t<A>, std::decay_t<B>> operator,(A&& a, B&& b) {
         return { { std::forward<A>(a), std::forward<B>(b) } };
     }
@@ -470,7 +469,7 @@ namespace kaixo {
     KAIXO_UNARY_OP(++, increment);
     KAIXO_UNARY_OP(--, decrement);
     KAIXO_UNARY_OP(!, logic_not);
-    //KAIXO_UNARY_OP(&, pointer);
+    //KAIXO_UNARY_OP(&, pointer);    // <<< Crashes MSVC for some reason...
     KAIXO_UNARY_OP(*, dereference);
     
     // ------------------------------------------------
@@ -624,7 +623,7 @@ namespace kaixo {
         // ------------------------------------------------
 
         using defines = Vars;
-        using depends = remove_all_t<depends_t<Range>, Vars>;
+        using depends = remove_all_t<unique_t<concat_t<depends_t<Range>, depends_t<Expression>>>, Vars>;
 
         // ------------------------------------------------
 
@@ -1198,10 +1197,6 @@ namespace kaixo {
         }
     }
 
-    // Explicitly delete the case for named ranges, as this messes with existing comma operators.
-    //template<class ...As, class ...Bs>
-    //constexpr auto operator,(named_range<As...>&&, named_range<Bs...>&&) = delete;
-    
     // ------------------------------------------------
     //                    Break
     // ------------------------------------------------
