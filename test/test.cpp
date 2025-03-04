@@ -70,13 +70,11 @@ int main() {
 
     //auto aonei = (b, d) <- ((c, +range(0, a)) | c <- range(0, 10));
 
-    auto gsrgsr = ((a, b, d) | a <- range(0, 10), (b, d) <- ((c, +range(0, a)) | c <- range(0, 10)));
+    auto gsrgsr = (1 | a <- range(0, 10), (b, d) <- ((c, +range(0, a)) | c <- range(0, 10)));
 
     for (auto a : gsrgsr) {
 
     }
-
-    /*
 
     std::array people{
         Person{ .id = 0, .name = "John",  .age = 36, .friends = { 1, 2 } },
@@ -195,7 +193,6 @@ int main() {
         //    std::println("{}", prime);
         //}
     }
-    */
 }
 
 
