@@ -64,9 +64,10 @@ int main() {
     //decltype(srgsrgs)::defines::size;
 
     std::vector<std::string> names{};
-    auto aefa1 = ((a, +range(0, a)) | a <- range(0, 10));
-    auto aefa2 = ((+(b | b <- range(0, a)), a) | a <- range(0, 10));
+    constexpr auto aefa1 = ((a, +range(0, a), +range(0, 1)) | a <- range(0, 10))[0];
+    constexpr auto aefa2 = ((+(b | b <- range(0, a)), a) | a <- range(0, 10))[0];
     auto aefa3 = ((a, b, c) | a <- names, (b, c) <- (a, range(0, 10)));
+
 
     /*
 
@@ -232,3 +233,6 @@ constexpr int cmtotal2 = (*(b | a <- range(0, 3), b <- (d | c <- range(0, a), d 
 static_assert(cmtotal2 == 0);
 constexpr int cmtotal3 = ((b | b <- checkers)[a] | a <- range(0, 3))[2].total();
 static_assert(cmtotal3 == 0);
+
+constexpr auto aefa4 = (((b + c) | (b, c) <- (range(0, 10), range(0, a))) | a <- range(0, 10))[9][8];
+static_assert(aefa4 == 16);

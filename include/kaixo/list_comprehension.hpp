@@ -214,12 +214,12 @@ namespace kaixo {
     // ------------------------------------------------
 
     template<class Ty>
-    concept unevaluated = depends_t<std::decay_t<Ty>>::size != 0;
+    concept unevaluated = depends_t<std::decay_t<Ty>>::size != 0 || requires { typename std::decay_t<Ty>::explicitly_unevaluated; };
     
     template<class Ty, class Tuple> 
         requires (!unevaluated<Ty>)
     constexpr auto evaluate(Ty&& o, Tuple&&) { return std::forward<Ty>(o); }
-
+    
     template<unevaluated Ty, class Tuple> 
         requires requires (Ty&& o, Tuple&& v) { { o.evaluate(v) }; }
     constexpr auto evaluate(Ty&& o, Tuple&& v)
@@ -227,7 +227,21 @@ namespace kaixo {
     {
         return std::forward<Ty>(o).evaluate(v);
     }
-
+    
+    // Owning view does not define a copy constructor, so here we 
+    // manually copy the contained range into a new owning_view.
+    // This is only really used in conjunction with the expression_wrapper
+    // in the case that the stored expression is itself an owning_view.
+    template<std::copy_constructible Ty, class Tuple>
+    constexpr std::ranges::owning_view<Ty> evaluate(const std::ranges::owning_view<Ty>& o, Tuple&&) {
+        return std::views::all(static_cast<Ty>(o.base()));
+    }
+    
+    template<std::copy_constructible Ty, class Tuple>
+    constexpr std::ranges::owning_view<Ty> evaluate(std::ranges::owning_view<Ty>& o, Tuple&&) {
+        return std::views::all(static_cast<Ty>(o.base()));
+    }
+    
     template<class Ty, class Tuple>
     using evaluate_result_t = decltype(kaixo::evaluate(std::declval<Ty>(), std::declval<Tuple>()));
     
@@ -872,27 +886,51 @@ namespace kaixo {
 
     // ------------------------------------------------
     
-    template<class Expression>
-    struct expression_wrapper {
-        Expression expression;
+    // Wraps any range inside a fake unevaluated expression
+    // this is the only way to have a fully evaluated range inside
+    // of an expression.
+    template<any_range Range>
+    struct range_expression_wrapper {
 
-        using defines = defines_t<Expression>;
-        using depends = depends_t<Expression>;
+        // ------------------------------------------------
+
+        using defines = defines_t<Range>;
+        using depends = depends_t<Range>;
+
+        // ------------------------------------------------
+
+        using explicitly_unevaluated = int;
+
+        // ------------------------------------------------
+
+        Range range;
+
+        // ------------------------------------------------
 
         template<class Self, class Tuple>
-        constexpr auto evaluate(this Self&& self, Tuple&& tuple) {
+        constexpr auto evaluate(this Self&& self, Tuple&& tuple) 
+            -> decltype(kaixo::evaluate(std::forward<Self>(self).range, tuple))
+        {
             return kaixo::evaluate(std::forward<Self>(self).range, tuple);
         }
+
+        // ------------------------------------------------
+
     };
 
-    // This wraps an unevaluated range in an expression, which is useful
+    // This wraps a range in an expression, which is useful
     // when it's used inside the expression of another named_range
     // as the comma operator will otherwise continue building upon
     // this if it is a named_range, or it might construct a zip-range,
     // instead of constructing a tuple_operation.
     template<explicit_unevaluated_range Range>
-    constexpr expression_wrapper<std::decay_t<Range>> operator+(Range&& range) {
+    constexpr range_expression_wrapper<std::decay_t<Range>> operator+(Range&& range) {
         return { std::forward<Range>(range) };
+    }
+
+    template<evaluated_range Range>
+    constexpr range_expression_wrapper<std::views::all_t<Range&&>> operator+(Range&& range) {
+        return { std::views::all(std::forward<Range>(range)) };
     }
     
     // ------------------------------------------------
