@@ -1,6 +1,8 @@
 # list comprehension
 List comprehension in C++! 
 
+Note: This requires a bunch of C++23 features.
+
 ```cpp
 constexpr var<struct A> a{};
 constexpr var<struct B> b{};
