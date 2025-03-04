@@ -1358,7 +1358,7 @@ namespace kaixo {
         Expression expression;
 
         template<class Self, class Tuple>
-        constexpr Tuple&& operator()(this Self&& self, Tuple&& tuple) {
+        constexpr Tuple operator()(this Self&& self, Tuple&& tuple) {
             std::inserter(std::forward<Self>(self).range, std::ranges::end(std::forward<Self>(self).range)) 
                 = kaixo::evaluate(std::forward<Self>(self).expression, named_tuple<Vars, Tuple&&>{ std::forward<Tuple>(tuple) });
             return std::forward<Tuple>(tuple);
