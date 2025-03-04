@@ -17,7 +17,7 @@ In the end, every part of a list comprehension either depends on some identifier
 
 Behind the scenes all of the iteration actually uses the `std::ranges` library, so most of the heavy lifting is done by the standard library. The main thing this code does is define the necessary operator overloads and surrogate classes to put together the list comprehension as a range. 
 
-Bit of a disclaimer, since this is mostly just a fun little novelty I created, it isn't well-tested. It generally seems to work, but there could definitely be edge-cases in which it fails, which will likely give you nice and long unreadable compiler errors. No to mention this uses a bunch of very complicated template magic, there's a good chance your compiler might not even like it at all. I created it using latest MSVC compiler, I haven't tested it on any other compiler.
+**Bit of a disclaimer**, since this is mostly just a fun little novelty I created, it isn't well-tested. It generally seems to work, but there could definitely be edge-cases in which it fails, which will likely give you nice and long unreadable compiler errors. No to mention this uses a bunch of very complicated template magic, there's a good chance your compiler might not even like it at all. I created it using latest MSVC compiler, I haven't tested it on any other compiler. I've had many times during making this that I've encountered an 'internal compiler error' on what was seemingly perfectly valid code. Even had to comment out the `&` operator overload for those unevaluated expressions, because whenever I would do `using namespace kaixo` in the global namespace MSVC would just instantly crash with 'internal compiler error'.
 
 ## Examples
 See `example/example.cpp`.
