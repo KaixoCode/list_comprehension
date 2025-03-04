@@ -929,7 +929,7 @@ namespace kaixo {
     // Handles main case for combining 2 ranges, adds them to a cartesian_product_view.
     template< class           ...V1s
             , evaluated_range    Range1
-            , not_dud            Expression
+            , class              Expression
             , class           ...V2s
             , evaluated_range    Range2>
 
@@ -1038,7 +1038,7 @@ namespace kaixo {
     // Handles default case for evaluation of consecutive ranges
     template< class           ...V1s
             , evaluated_range    Range1
-            , not_dud            Expression
+            , class              Expression
             , class           ...V2s
             , unevaluated        Range2>
 
@@ -1106,7 +1106,7 @@ namespace kaixo {
     //  - Encounters unevaluated range which can not be evaluated using V1s...
     template< class   ...V1s
             , class      Range1
-            , not_dud    Expression
+            , class      Expression
             , class   ...V2s
             , class      Range2>
 
@@ -1156,7 +1156,7 @@ namespace kaixo {
     // Handles default case for a range filter
     template< class                      Vars
             , evaluated_range            Range
-            , not_dud                    Expression
+            , class                      Expression
             , valid_expression_arguments Condition>
 
         requires has_all_defines_for<Vars, Condition>
@@ -1179,9 +1179,9 @@ namespace kaixo {
     // Handles 2 cases for later evaluation:
     //  - Continues building upon an unevaluated range, need to cache all parts
     //  - Encounters Condition which can not be evaluated using Vars
-    template< class Vars
-            , class Range
-            , not_dud Expression
+    template< class                      Vars
+            , class                      Range
+            , class                      Expression
             , valid_expression_arguments Condition>
 
         requires (unevaluated<Range>     // Case 1: continue building upon unevaluated
@@ -1298,10 +1298,10 @@ namespace kaixo {
     // ------------------------------------------------
 
     // Handles default case for break condition
-    template< class Vars
+    template< class           Vars
             , evaluated_range Range
-            , not_dud Expression
-            , unevaluated Break>
+            , class           Expression
+            , unevaluated     Break>
 
         requires has_all_defines_for<Vars, Break>
 
@@ -1321,9 +1321,9 @@ namespace kaixo {
     // Handles 2 cases for later evaluation:
     //  - Continues building upon an unevaluated range, need to cache all parts
     //  - Encounters Break condition which can not be evaluated using Vars
-    template< class Vars
-            , class Range
-            , not_dud Expression
+    template< class       Vars
+            , class       Range
+            , class       Expression
             , unevaluated Break>
 
         requires (unevaluated<Range>      // Case 1: continue building upon unevaluated
@@ -1377,11 +1377,11 @@ namespace kaixo {
     // ------------------------------------------------
 
     // Handles default case for range inserter
-    template< class Vars
+    template< class           Vars
             , evaluated_range Range1
-            , not_dud Expression1
+            , class           Expression1
             , evaluated_range Range2
-            , unevaluated Expression2>
+            , unevaluated     Expression2>
 
         requires has_all_defines_for<Vars, Expression2>
 
@@ -1402,11 +1402,11 @@ namespace kaixo {
     // Handles 2 cases for later evaluation:
     //  - Continues building upon an unevaluated range, need to cache all parts
     //  - Encounters expression which can not be evaluated using Vars
-    template< class Vars
-            , class Range1
-            , not_dud Expression1
+    template< class           Vars
+            , class           Range1
+            , class           Expression1
             , evaluated_range Range2
-            , unevaluated Expression2>
+            , unevaluated     Expression2>
 
         requires (unevaluated<Range1>     // Case 1: continue building upon unevaluated
              ||   evaluated_range<Range1> // Case 2: can't fully evaluate Expression2
