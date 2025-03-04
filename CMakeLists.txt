@@ -15,7 +15,7 @@ option(BUILD_LIST_COMPREHENSION_TEST "Build the list comprehension test project"
 
 # ==============================================
 
-include_directories(list_comprehension_example "${CMAKE_CURRENT_SOURCE_DIR}/include/")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include/")
 
 # ==============================================
 
