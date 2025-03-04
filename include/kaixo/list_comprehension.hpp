@@ -54,6 +54,11 @@ namespace kaixo {
     }
 
     // ------------------------------------------------
+    
+    template<class Ty>
+    concept not_dud = !std::same_as<std::decay_t<Ty>, detail::dud>;
+
+    // ------------------------------------------------
 
     template<class Tuple>
     constexpr std::size_t recursive_tuple_size_v = std::tuple_size_v<decltype(detail::flatten_tuple(std::declval<Tuple>()))>;
@@ -293,7 +298,8 @@ namespace kaixo {
     
     template<class ...As>
     concept valid_tuple_arguments =
-           (unevaluated<As> || ...); // Tuple operation requires at least 1 argument to be unevaluated
+           (unevaluated<As> || ...) // Tuple operation requires at least 1 argument to be unevaluated
+        && (!explicit_range<As> && ...); // Cannot be a range, as this messes with the operator overloads.
     
     // ------------------------------------------------
     
@@ -866,6 +872,31 @@ namespace kaixo {
 
     // ------------------------------------------------
     
+    template<class Expression>
+    struct expression_wrapper {
+        Expression expression;
+
+        using defines = defines_t<Expression>;
+        using depends = depends_t<Expression>;
+
+        template<class Self, class Tuple>
+        constexpr auto evaluate(this Self&& self, Tuple&& tuple) {
+            return kaixo::evaluate(std::forward<Self>(self).range, tuple);
+        }
+    };
+
+    // This wraps an unevaluated range in an expression, which is useful
+    // when it's used inside the expression of another named_range
+    // as the comma operator will otherwise continue building upon
+    // this if it is a named_range, or it might construct a zip-range,
+    // instead of constructing a tuple_operation.
+    template<explicit_unevaluated_range Range>
+    constexpr expression_wrapper<std::decay_t<Range>> operator+(Range&& range) {
+        return { std::forward<Range>(range) };
+    }
+    
+    // ------------------------------------------------
+    
     // This '-' operator is half of the custom '<-' operator
     // this instance is for evaluated ranges, and wraps it in
     // either an owning_view or ref_view using all_t.
@@ -904,7 +935,7 @@ namespace kaixo {
     // ------------------------------------------------
     
     // Handles main case for combining 2 ranges, adds them to a cartesian_product_view.
-    template<class ...V1s, evaluated_range Range1, class Expression, class ...V2s, evaluated_range Range2>
+    template<class ...V1s, evaluated_range Range1, not_dud Expression, class ...V2s, evaluated_range Range2>
     constexpr auto operator,(named_range<var<V1s...>, Range1, Expression>&& r1, named_range<var<V2s...>, Range2>&& r2)
         -> named_range<var<V1s..., V2s...>, std::ranges::cartesian_product_view<Range1, Range2>, Expression>
     {
@@ -947,7 +978,7 @@ namespace kaixo {
     };
 
     // Handles default case for evaluation of consecutive ranges
-    template<class ...V1s, evaluated_range Range1, class Expression, class ...V2s, unevaluated Range2>
+    template<class ...V1s, evaluated_range Range1, not_dud Expression, class ...V2s, unevaluated Range2>
         requires has_all_defines_for<var<V1s...>, Range2>
     constexpr auto operator,(named_range<var<V1s...>, Range1, Expression>&& r1, named_range<var<V2s...>, Range2>&& r2)
         -> named_range<var<V1s..., V2s...>, std::ranges::join_view<std::ranges::transform_view<Range1, range_evaluator<var<V1s...>, Range2>>>, Expression>
@@ -1002,7 +1033,7 @@ namespace kaixo {
     // Handles 2 cases for later evaluation:
     //  - Continue building upon an unevaluated range, need to cache all ranges
     //  - Encounters unevaluated range which can not be evaluated using V1s...
-    template<class ...V1s, class Range1, class Expression, class ...V2s, class Range2>
+    template<class ...V1s, class Range1, not_dud Expression, class ...V2s, class Range2>
         requires (unevaluated<Range1> && explicit_range<Range2> // Case 1
                || evaluated_range<Range1> && unevaluated<Range2> && !has_all_defines_for<var<V1s...>, Range2>) // Case 2
     constexpr auto operator,(named_range<var<V1s...>, Range1, Expression>&& r1, named_range<var<V2s...>, Range2>&& r2)
@@ -1031,7 +1062,7 @@ namespace kaixo {
     };
 
     // Handles default case for a range filter
-    template<class Vars, evaluated_range Range, class Expression, valid_expression_arguments Condition>
+    template<class Vars, evaluated_range Range, not_dud Expression, valid_expression_arguments Condition>
         requires has_all_defines_for<Vars, Condition>
     constexpr auto operator,(named_range<Vars, Range, Expression>&& r, Condition&& c)
         -> named_range<Vars, std::ranges::filter_view<std::views::all_t<Range>, range_filter<Vars, Condition>>, Expression> 
@@ -1046,7 +1077,7 @@ namespace kaixo {
     // Handles 2 cases for later evaluation:
     //  - Continues building upon an unevaluated range, need to cache all parts
     //  - Encounters Condition which can not be evaluated using Vars
-    template<class Vars, class Range, class Expression, valid_expression_arguments Condition>
+    template<class Vars, class Range, not_dud Expression, valid_expression_arguments Condition>
         requires (unevaluated<Range> // Case 1
                || evaluated_range<Range> && !has_all_defines_for<Vars, Condition>) // Case 2
     constexpr auto operator,(named_range<Vars, Range, Expression>&& r, Condition&& c)
@@ -1073,13 +1104,13 @@ namespace kaixo {
     };
     
     template<class ...Ranges> // Unevaluated version
-        requires (explicit_unevaluated_range<Ranges> || ...)
-    struct zip_range<Ranges...> : std::tuple<Ranges...> {
+        requires (!evaluated_range<Ranges> || ...)
+    struct zip_range<Ranges...> {
 
         // ------------------------------------------------
         
         using defines = var<>;
-        using depends = unique_t<concat_t<depends_t<Ranges>...>>;
+        using depends = unique_t<concat_t<depends_t<std::decay_t<Ranges>>...>>;
 
         // ------------------------------------------------
 
@@ -1087,7 +1118,7 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        using std::tuple<Ranges...>::tuple;
+        std::tuple<Ranges...> ranges;
 
         // ------------------------------------------------
 
@@ -1098,7 +1129,7 @@ namespace kaixo {
                 // This will construct a new zip_range, automatically picking
                 // the correct one (unevaluated or evaluated).
                 return (kaixo::evaluate(std::forward<Args>(args), tuple), ...);
-            }, static_cast<const std::tuple<Ranges...>&>(self));
+            }, std::forward<Self>(self).ranges);
         }
 
         // ------------------------------------------------
@@ -1108,8 +1139,25 @@ namespace kaixo {
     // Construct the zip range
     template<any_range A, any_range B>
         requires (explicit_range<A> || explicit_range<B>)
-    constexpr zip_range<A, B> operator,(A&& a, B&& b) {
-        return zip_range<A, B>{ std::forward<A>(a), std::forward<B>(b) };
+    constexpr auto operator,(A&& a, B&& b) {
+        if constexpr (evaluated_range<A> && evaluated_range<B>) {
+            return zip_range<A, B> {
+                std::forward<A>(a),
+                std::forward<B>(b),
+            };
+        } else if constexpr (evaluated_range<A>) {
+            return zip_range<A, std::decay_t<B>> { {
+                std::forward<A>(a),
+                std::forward<B>(b),
+            } };
+        } else if constexpr (evaluated_range<B>) {
+            return zip_range<std::decay_t<A>, B> { {
+                std::forward<A>(a),
+                std::forward<B>(b),
+            } };
+        } else {
+            return zip_range<std::decay_t<A>, std::decay_t<B>>{ { std::forward<A>(a), std::forward<B>(b) } };
+        }
     }
 
     // Explicitly delete the case for named ranges, as this messes with existing comma operators.
@@ -1146,7 +1194,7 @@ namespace kaixo {
     // ------------------------------------------------
 
     // Handles default case for break condition
-    template<class Vars, evaluated_range Range, class Expression, unevaluated Break>
+    template<class Vars, evaluated_range Range, not_dud Expression, unevaluated Break>
         requires has_all_defines_for<Vars, Break>
     constexpr auto operator,(named_range<Vars, Range, Expression>&& r, break_point<var<>, Break>&& b) 
         -> named_range<Vars, std::ranges::take_while_view<Range, break_point<Vars, Break>>, Expression> 
@@ -1161,7 +1209,7 @@ namespace kaixo {
     // Handles 2 cases for later evaluation:
     //  - Continues building upon an unevaluated range, need to cache all parts
     //  - Encounters Break condition which can not be evaluated using Vars
-    template<class Vars, class Range, class Expression, unevaluated Break>
+    template<class Vars, class Range, not_dud Expression, unevaluated Break>
         requires (unevaluated<Range> // Case 1
                || evaluated_range<Range> && !has_all_defines_for<Vars, Break>) // Case 2
     constexpr auto operator,(named_range<Vars, Range, Expression>&& r, break_point<var<>, Break>&& b) 
@@ -1202,7 +1250,7 @@ namespace kaixo {
     }
 
     // Handles default case for range inserter
-    template<class Vars, evaluated_range Range1, class Expression1, evaluated_range Range2, unevaluated Expression2>
+    template<class Vars, evaluated_range Range1, not_dud Expression1, evaluated_range Range2, unevaluated Expression2>
         requires has_all_defines_for<Vars, Expression2>
     constexpr auto operator,(named_range<Vars, Range1, Expression1>&& r, range_inserter<var<>, Range2, Expression2>&& i) 
         -> named_range<Vars, std::ranges::transform_view<Range1, range_inserter<Vars, Range2, Expression2>>, Expression1>
@@ -1218,7 +1266,7 @@ namespace kaixo {
     // Handles 2 cases for later evaluation:
     //  - Continues building upon an unevaluated range, need to cache all parts
     //  - Encounters expression which can not be evaluated using Vars
-    template<class Vars, class Range1, class Expression1, evaluated_range Range2, unevaluated Expression2>
+    template<class Vars, class Range1, not_dud Expression1, evaluated_range Range2, unevaluated Expression2>
         requires (unevaluated<Range1> // Case 1
                || evaluated_range<Range1> && !has_all_defines_for<Vars, Expression2>) // Case 2
     constexpr auto operator,(named_range<Vars, Range1, Expression1>&& r, range_inserter<var<>, Range2, Expression2>&& i) 

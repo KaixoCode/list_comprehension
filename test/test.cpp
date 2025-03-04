@@ -51,10 +51,24 @@ int main() {
     std::vector<int> av{};
     std::vector<int> bv{};
 
-    auto oiane = (a, b) <- std::views::cartesian_product(av | std::views::filter([](auto& a) -> decltype(auto) { return a; }), bv);
+    //auto oiane = (a, b) <- std::views::cartesian_product(av | std::views::filter([](auto& a) -> decltype(auto) { return a; }), bv);
 
-    oiane.begin();
+    //oiane.begin();
     
+    //auto aoien = (b, c) <- (a, range(0, 10));
+    //
+    //decltype(aoien)::depends::size;
+    //
+    //auto srgsrgs = (b, c) <- (a, range(0, 10));
+    //
+    //decltype(srgsrgs)::defines::size;
+
+    std::vector<std::string> names{};
+    auto aefa1 = ((a, +range(0, a)) | a <- range(0, 10));
+    auto aefa2 = ((+(b | b <- range(0, a)), a) | a <- range(0, 10));
+    auto aefa3 = ((a, b, c) | a <- names, (b, c) <- (a, range(0, 10)));
+
+    /*
 
     std::array people{
         Person{ .id = 0, .name = "John",  .age = 36, .friends = { 1, 2 } },
@@ -173,6 +187,7 @@ int main() {
         //    std::println("{}", prime);
         //}
     }
+    */
 }
 
 
