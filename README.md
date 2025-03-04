@@ -1,19 +1,25 @@
 # list comprehension
-List comprehension in C++! 
+Single-header list-comprehension using operator overloading in C++. This is a novelty more than anything, as compile times skyrocket the moment you have a couple of these list comprehensions. This code uses a bunch of the latest C++23 features, and contains some heavy template magic. 
 
-Note: This requires a bunch of C++23 features.
-
+Here's a simple example of a list comprehension. The identifiers `a` and `b` are defined in the namespace  `kaixo::variables`.
 ```cpp
-constexpr var<struct A> a{};
-constexpr var<struct B> b{};
-constexpr auto res = ((a, b) | a <- range(0, 4), b <- range(0, 4), a > b);
-```
-output:
-```
-(1, 0), (2, 0), (2, 1), (3, 0), (3, 1), (3, 2)
+using namespace kaixo;
+using namespace kaixo::variables;
+auto values = ((a, b) | a <- range(0, 4), b <- range(0, 4), a > b);
+// output: (1, 0), (2, 0), (2, 1), (3, 0), (3, 1), (3, 2)
 ```
 
-## Features
+There's a bunch of aspects that work together to make this work, the main one being the ability to create unevaluated expressions using those custom identifiers:
+```cpp
+auto expression = a + b * 20;
+```
+In the end, every part of a list comprehension either depends on some identifiers, or defines identifiers. This information is then used to determine whether the list comprehension is iteratable; if it still depends on identifiers, it's not fully evaluated yet.
+
+Behind the scenes all of the iteration actually uses the `std::ranges` library, so most of the heavy lifting is done by the standard library. The main thing this code does is define the necessary operator overloads and surrogate classes to put together the list comprehension as a range. 
+
+Bit of a disclaimer, since this is mostly just a fun little novelty I created, it isn't well-tested. It generally seems to work, but there could definitely be edge-cases in which it fails, which will likely give you nice and long unreadable compiler errors. No to mention this uses a bunch of very complicated template magic, there's a good chance your compiler might not even like it at all. I created it using latest MSVC compiler, I haven't tested it on any other compiler.
+
+## Examples
 See `example/example.cpp`.
 ```cpp
 #include <algorithm>
