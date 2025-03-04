@@ -16,17 +16,20 @@ int main() {
     // you can use the variables in the ranges!
     auto r1 = ((a, b, c) | c <- range(1, 11), b <- range(1, c), a <- range(1, b), a*a + b*b == c*c);
     for (auto [a, b, c] : r1) std::print("({}, {}, {}), ", a, b, c); std::println("");
+    // result: (3, 4, 5), (6, 8, 10),
 
     // Parallel iteration! This is where the magic really comes in. It will iterate in parallel, 
     // so the output here will be (0, 0), (1, 1), ...,(4, 4).
     auto r2 = ((a, b) | (a, b) <- (range(0, 5), range(0, 5)));
     for (auto [a, b] : r2) std::print("({}, {}), ", a, b); std::println("");
+    // result: (0, 0), (1, 1), (2, 2), (3, 3), (4, 4),
 
     // Decompose the keys and values from an std::map! You can also combine this with parallel 
     // iteration to extract all separate variables.
     std::map<int, int> data{ { 1, 2 }, { 3, 4 }, { 5, 6 } };
     auto r3 = (value + a | ((key, value), a) <- (data, range(0, 5)));
     for (auto v : r3) std::print("{}, ", v); std::println("");
+    // result: 2, 5, 8,
 
     // Calling standard functions in an expression. Most of the functions in the standard have 
     // been given an overload for unevaluated arguments, so you can use them in the constraints 
@@ -34,6 +37,7 @@ int main() {
     // biggest of the 2 values in the pair.
     auto r4 = (std::max(a, b) | (a, b) <- std::array<std::pair<int, int>, 3>{ { { 1, 5 }, { 5, 4 }, { 3, 4 } } });
     for (auto v : r4) std::print("{}, ", v); std::println("");
+    // result: 5, 5, 4,
 
     // Lazy evaluation! You can create an infinite list
     constexpr auto r5 = (a | a <- range(0, inf));
@@ -43,15 +47,21 @@ int main() {
     // this means the example down below will only generate values until `x` reaches 10.
     auto r6 = (x | x <- range(0, inf), brk = x == 10);
     for (auto v : r6) std::print("{}, ", v); std::println("");
+    // result: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
 
     // You can create a range of ranges.
-    auto r7 = (range(0, a) | a <- range(0, 10));
+    auto r7 = (range(0, a) | a <- range(1, 5));
     for (auto r : r7) { for (auto v : r) std::print("{}, ", v); std::println(""); }
+    // result: 0,
+    //         0, 1,
+    //         0, 1, 2,
+    //         0, 1, 2, 3,
     
     // You can iterate over nested ranges as well.
     std::vector<std::string> names{ "John", "Jimmy", "James" };
     auto r8 = (b | a <- names, b <- a, std::islower(b));
     for (auto r : r8) std::print("{}", r); std::println("");
+    // result: "ohnimmyames"
 
     // There is a special operation that lets you insert into ranges while iterating
     // as well. One great use for that is to generate prime numbers. It uses the
@@ -61,6 +71,7 @@ int main() {
     std::vector<int> primes{};
     auto r9 = (a | a <- range(2, 20), is_empty((1 | b <- primes, b <= std::sqrt(a), a % b == 0)), primes << a);
     for (auto r : r9) std::print("{}, ", r); std::println("");
+    // result: 2, 3, 5, 7, 11, 13, 17, 19,
 
     // You can also create more complex list comprehensions with objects.
     struct Person {
@@ -100,6 +111,10 @@ int main() {
         }
         std::println("");
     }
+    // result: John is 36 years old and is friends with Harry and Larry
+    //         Harry is 22 years old and is friends with John and Larry
+    //         Larry is 55 years old and is friends with Harry and Sam
+    //         Sam is 15 years old and is friends with Harry
 
     return 0;
 }
