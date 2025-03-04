@@ -634,13 +634,36 @@ namespace kaixo {
     template<class Vars, evaluated_range Range, class Expression> // Evaluated version
         requires (Vars::size == recursive_tuple_size_v<std::ranges::range_value_t<Range>> && has_all_defines_for<Vars, Expression>)
     struct named_range<Vars, Range, Expression> : named_range_storage<Vars, Range, Expression> {
-
+        
         // ------------------------------------------------
         
-        using base_iterator = decltype(std::ranges::begin(std::declval<named_range_storage<Vars, Range, Expression>&>().range));
-        using base_sentinel = decltype(std::ranges::end(std::declval<named_range_storage<Vars, Range, Expression>&>().range));
-        using base_const_iterator = decltype(std::ranges::begin(std::declval<const named_range_storage<Vars, Range, Expression>&>().range));
-        using base_const_sentinel = decltype(std::ranges::end(std::declval<const named_range_storage<Vars, Range, Expression>&>().range));
+        // Some ranges (like std::views::filter) cannot const-iterator, because they have side-effects
+        // For that reason, we need to separate the base_iterator types for const and non-const like
+        // this, because evaluating std::ranges::begin for a const-version that cannot const iterate
+        // will cause a compile-time error.
+        constexpr static bool can_const_iterate = std::ranges::range<const Range>;
+
+        template<bool Const>
+        struct base_iterator_types;
+        
+        template<bool Const>
+            requires (!Const || !can_const_iterate)
+        struct base_iterator_types<Const> {
+            using base_iterator = decltype(std::ranges::begin(std::declval<named_range_storage<Vars, Range, Expression>&>().range));
+            using base_sentinel = decltype(std::ranges::end(std::declval<named_range_storage<Vars, Range, Expression>&>().range));
+        };
+        
+        template<bool Const>
+            requires (Const && can_const_iterate)
+        struct base_iterator_types<Const>{
+            using base_iterator = decltype(std::ranges::begin(std::declval<const named_range_storage<Vars, Range, Expression>&>().range));
+            using base_sentinel = decltype(std::ranges::end(std::declval<const named_range_storage<Vars, Range, Expression>&>().range));
+        };
+
+        using base_iterator = base_iterator_types<false>::base_iterator;
+        using base_sentinel = base_iterator_types<false>::base_sentinel;
+        using base_const_iterator = base_iterator_types<true>::base_iterator;
+        using base_const_sentinel = base_iterator_types<true>::base_sentinel;
 
         // ------------------------------------------------
         
@@ -651,19 +674,22 @@ namespace kaixo {
 
             // ------------------------------------------------
 
-            using self_type = std::conditional_t<Const, const named_range_storage<Vars, Range, Expression>, named_range_storage<Vars, Range, Expression>>;
-            using base_iterator_type = std::conditional_t<Const, base_const_iterator, base_iterator>;
+            using self_type = std::conditional_t<Const, 
+                const named_range_storage<Vars, Range, Expression>, 
+                      named_range_storage<Vars, Range, Expression>>;
+
+            using base_iterator_type = base_iterator_types<Const>::base_iterator;
             using reference = decltype(std::declval<self_type&>().transform(std::declval<std::iter_reference_t<base_iterator_type>>()));
             using value_type = std::decay_t<reference>;
-            using difference_type = std::iter_difference_t<base_iterator>;
+            using difference_type = std::iter_difference_t<base_iterator_type>;
             using iterator_category = std::conditional_t<
-                std::random_access_iterator<base_iterator>,
+                std::random_access_iterator<base_iterator_type>,
                 std::random_access_iterator_tag, 
                 std::conditional_t<
-                    std::bidirectional_iterator<base_iterator>,
+                    std::bidirectional_iterator<base_iterator_type>,
                     std::bidirectional_iterator_tag, 
                     std::conditional_t<
-                        std::forward_iterator<base_iterator>,
+                        std::forward_iterator<base_iterator_type>,
                         std::forward_iterator_tag,
                         std::input_iterator_tag>>>;
 
@@ -769,8 +795,9 @@ namespace kaixo {
 
         constexpr iterator begin() { return { std::ranges::begin(this->range), this }; }
         constexpr base_sentinel end() { return std::ranges::end(this->range); }
-        constexpr const_iterator begin() const { return { std::ranges::begin(this->range), this }; }
-        constexpr base_const_sentinel end() const { return std::ranges::end(this->range); }
+
+        constexpr const_iterator begin() const requires can_const_iterate { return { std::ranges::begin(this->range), this };  }
+        constexpr base_const_sentinel end() const requires can_const_iterate { return std::ranges::end(this->range); }
 
         // ------------------------------------------------
         

@@ -51,8 +51,10 @@ int main() {
     std::vector<int> av{};
     std::vector<int> bv{};
 
-    const auto oiane = std::views::cartesian_product(av | std::views::filter([](auto& a) -> decltype(auto) { return a; }), bv);
+    auto oiane = (a, b) <- std::views::cartesian_product(av | std::views::filter([](auto& a) -> decltype(auto) { return a; }), bv);
+
     oiane.begin();
+    
 
     std::array people{
         Person{ .id = 0, .name = "John",  .age = 36, .friends = { 1, 2 } },
