@@ -132,6 +132,9 @@ namespace kaixo {
         template<class Index> 
         constexpr auto operator[](Index&& index) const;
 
+        template<class Class, class Type, class ...Args, class ...Tys>
+        constexpr auto operator()(Type(Class::* ptr)(Args...), Tys&&... tys) const;
+
         // ------------------------------------------------
 
     };
@@ -158,6 +161,7 @@ namespace kaixo {
     // ------------------------------------------------
 
     template<class...> struct concat;
+    template<> struct concat<> : std::type_identity<var<>> {};
     template<class ...As, class ...Bs, class ...Cs>
     struct concat<var<As...>, var<Bs...>, Cs...> : concat<var<As..., Bs...>, Cs...> {};
     template<class ...As>
@@ -319,13 +323,17 @@ namespace kaixo {
     // Tuple operation is an expression resulting in a tuple.
     // This can be constructed using the comma operator.
     template<class ...Args>
-        requires valid_tuple_arguments<Args...>
+        requires (sizeof...(Args) == 0 || valid_tuple_arguments<Args...>)
     struct tuple_operation {
 
         // ------------------------------------------------
 
         using defines = var<>;
         using depends = unique_t<concat_t<depends_t<Args>...>>;
+
+        // ------------------------------------------------
+        
+        using explicitly_unevaluated = int; // Necessary for when empty tuple
 
         // ------------------------------------------------
 
@@ -335,7 +343,8 @@ namespace kaixo {
 
         template<class Self, class Tuple>
         constexpr auto evaluate(this Self&& self, Tuple&& v) {
-            return std::apply([&]<class ...Tys>(Tys&& ...tys) {
+            if constexpr (sizeof...(Args) == 0) return std::tuple{};
+            else return std::apply([&]<class ...Tys>(Tys&& ...tys) {
                 // First case, at least one of the elements cannot be fully evaluated
                 // return another tuple_operation for later evaluation.
                 if constexpr ((unevaluated<evaluate_result_t<Tys&&, Tuple>> || ...)) {
@@ -482,6 +491,9 @@ namespace kaixo {
     template<unevaluated Expression, class Class, class Type>
     struct member_operation;
 
+    template<unevaluated Expression, class Fptr, class TupleOperation>
+    struct member_function_operation;
+
     template<class Expression, class Index>
         requires (unevaluated<Expression> || unevaluated<Index>)
     struct index_operation {
@@ -528,6 +540,17 @@ namespace kaixo {
             return {
                 .expression = std::forward<Self>(self), 
                 .index = std::forward<Index>(index),
+            };
+        }
+
+        template<class Self, class Class, class Type, class ...Args, class ...Tys>
+        constexpr auto operator()(this Self&& self, Type(Class::* ptr)(Args...), Tys&&... tys) 
+            -> member_function_operation<index_operation, Type(Class::*)(Args...), tuple_operation<std::decay_t<Tys>...>>
+        {
+            return {
+                .expression = std::forward<Self>(self), 
+                .ptr = ptr,
+                .arguments = { .args = { std::forward<Tys>(tys)... } },
             };
         }
 
@@ -595,6 +618,18 @@ namespace kaixo {
                 .index = std::forward<Index>(index),
             };
         }
+                
+        template<class Self, class Class, class Type, class ...Args, class ...Tys>
+        constexpr auto operator()(this Self&& self, Type(Class::* ptr)(Args...), Tys&&... tys) 
+            -> member_function_operation<member_operation, Type(Class::*)(Args...), tuple_operation<std::decay_t<Tys>...>>
+        {
+            return {
+                .expression = std::forward<Self>(self), 
+                .ptr = ptr,
+                .arguments = { .args = { std::forward<Tys>(tys)... } },
+            };
+        }
+
 
         // ------------------------------------------------
 
@@ -606,6 +641,92 @@ namespace kaixo {
     template<class Class, class Type>
     constexpr auto var<Vars...>::operator[](Type(Class::* ptr)) const {
         return member_operation<var<Vars...>, Class, Type>{ .ptr = ptr };
+    }
+    
+    // ------------------------------------------------
+    //                Member Operation
+    // ------------------------------------------------
+    //  Access a class member inside an expression
+    // ------------------------------------------------
+    
+    template<unevaluated Expression, class Fptr, class TupleOperation>
+    struct member_function_operation {
+
+        // ------------------------------------------------
+
+        Expression expression;
+        Fptr ptr;
+        TupleOperation arguments;
+
+        // ------------------------------------------------
+
+        using defines = var<>;
+        using depends = unique_t<concat_t<depends_t<Expression>, depends_t<TupleOperation>>>;
+
+        // ------------------------------------------------
+
+        template<class Self, class Tuple>
+        constexpr decltype(auto) evaluate(this Self&& self, Tuple&& tuple) {
+            using evaluated1_t = decltype(kaixo::evaluate(std::declval<Self&&>().expression, std::declval<Tuple&>()));
+            using evaluated2_t = decltype(kaixo::evaluate(std::declval<Self&&>().arguments, std::declval<Tuple&>()));
+            // First case, result still not fully evaluated, so return another member operation
+            if constexpr (unevaluated<evaluated1_t> || unevaluated<evaluated2_t>) {
+                return member_function_operation<evaluated1_t, Fptr, evaluated2_t>{
+                    .expression = kaixo::evaluate(std::forward<Self>(self).expression, tuple),
+                    .ptr = std::forward<Self>(self).ptr,
+                    .arguments = kaixo::evaluate(std::forward<Self>(self).arguments, tuple),
+                };
+            } 
+            // Second case, fully evaluated, so access the member
+            else return std::apply([&]<class ...Args>(Args&& ...args) {
+                return (kaixo::evaluate(std::forward<Self>(self).expression, tuple)
+                    .*(std::forward<Self>(self).ptr))(std::forward<Args>(args)...);
+            }, kaixo::evaluate(std::forward<Self>(self).arguments, tuple));
+        }
+
+        // ------------------------------------------------
+        
+        template<class Self, class Class, class Type>
+        constexpr member_operation<member_function_operation, Class, Type> operator[](this Self&& self, Type(Class::* ptr)) {
+            return {
+                .expression = std::forward<Self>(self), 
+                .ptr = ptr,
+            };
+        }
+        
+        template<class Self, class Index>
+        constexpr index_operation<member_function_operation, std::decay_t<Index>> operator[](this Self&& self, Index&& index) {
+            return {
+                .expression = std::forward<Self>(self), 
+                .index = std::forward<Index>(index),
+            };
+        }
+
+        template<class Self, class Class, class Type, class ...Args, class ...Tys>
+        constexpr auto operator()(this Self&& self, Type(Class::* ptr)(Args...), Tys&&... tys) 
+            -> member_function_operation<member_function_operation, Type(Class::*)(Args...), tuple_operation<std::decay_t<Tys>...>>
+        {
+            return {
+                .expression = std::forward<Self>(self), 
+                .ptr = ptr,
+                .arguments = { { std::forward<Tys>(tys)... } },
+            };
+        }
+
+        // ------------------------------------------------
+
+    };
+
+    // ------------------------------------------------
+
+    template<class ...Vars>
+    template<class Class, class Type, class ...Args, class ...Tys>
+    constexpr auto var<Vars...>::operator()(Type(Class::* ptr)(Args...), Tys&&... tys) const {
+        using tuple_t = tuple_operation<std::decay_t<Tys>...>;
+        return member_function_operation<var<Vars...>, Type (Class::*)(Args...), tuple_t>{
+            .ptr = ptr,
+            .arguments = tuple_t{ { std::forward<Tys>(tys)... } },
+        };
     }
 
     // ------------------------------------------------
@@ -714,7 +835,7 @@ namespace kaixo {
 
             // ------------------------------------------------
 
-            base_iterator_type base;
+            base_iterator_type base{};
             self_type* self = nullptr;
 
             // ------------------------------------------------
@@ -1808,27 +1929,34 @@ namespace std {
     //  range is empty when evaluated on the fly.
     // ------------------------------------------------
 
-#define KAIXO_FUNCTION_OVERLOAD(name)                                                \
-    template<class... Args>                                                          \
-        requires kaixo::valid_overload_arguments<Args...>                            \
-    struct kaixo_##name##_overload {                                                 \
-        using defines = kaixo::var<>;                                                \
-        using depends = kaixo::unique_t<kaixo::concat_t<kaixo::depends_t<Args>...>>; \
-                                                                                     \
-        std::tuple<Args...> args;                                                    \
-                                                                                     \
-        template<class Self, class Tuple>                                            \
-        constexpr decltype(auto) evaluate(this Self&& self, Tuple&& tuple) {         \
-            return std::apply([&]<class ...Tys>(Tys&& ...tys) {                      \
-                return name(kaixo::evaluate(std::forward<Tys>(tys), tuple)...);      \
-            }, std::forward<Self>(self).args);                                       \
-        }                                                                            \
-    };                                                                               \
-                                                                                     \
-    template<class... Args>                                                          \
-        requires kaixo::valid_overload_arguments<Args...>                            \
-    constexpr kaixo_##name##_overload<std::decay_t<Args>...> name(Args&& ...args) {  \
-        return { .args = { std::forward<Args>(args)... } };                          \
+#define KAIXO_FUNCTION_OVERLOAD(name)                                                                               \
+    template<class Tys, class Args>                                                                                 \
+    struct kaixo_##name##_overload;                                                                                 \
+                                                                                                                    \
+    template<class ...Tys, class... Args>                                                                           \
+        requires kaixo::valid_overload_arguments<Args...>                                                           \
+    struct kaixo_##name##_overload<std::tuple<Tys...>, std::tuple<Args...>> {                                       \
+        using defines = kaixo::var<>;                                                                               \
+        using depends = kaixo::unique_t<kaixo::concat_t<kaixo::depends_t<Args>...>>;                                \
+                                                                                                                    \
+        std::tuple<Args...> args;                                                                                   \
+                                                                                                                    \
+        template<class Self, class Tuple>                                                                           \
+        constexpr decltype(auto) evaluate(this Self&& self, Tuple&& tuple) {                                        \
+            return std::apply([&]<class ...Ts>(Ts&& ...ts) {                                                        \
+                if constexpr (sizeof...(Tys) == 0) {                                                                \
+                    return name(kaixo::evaluate(std::forward<Ts>(ts), tuple)...);                                   \
+                } else {                                                                                            \
+                    return name<Tys...>(kaixo::evaluate(std::forward<Ts>(ts), tuple)...);                           \
+                }                                                                                                   \
+            }, std::forward<Self>(self).args);                                                                      \
+        }                                                                                                           \
+    };                                                                                                              \
+                                                                                                                    \
+    template<class ...Tys, class... Args>                                                                           \
+        requires kaixo::valid_overload_arguments<Args...>                                                           \
+    constexpr kaixo_##name##_overload<std::tuple<Tys...>, std::tuple<std::decay_t<Args>...>> name(Args&& ...args) { \
+        return { .args = { std::forward<Args>(args)... } };                                                         \
     }
 
     // ------------------------------------------------
@@ -1955,6 +2083,7 @@ namespace std {
     KAIXO_FUNCTION_OVERLOAD(calloc);
     KAIXO_FUNCTION_OVERLOAD(free);
     KAIXO_FUNCTION_OVERLOAD(malloc);
+    KAIXO_FUNCTION_OVERLOAD(make_unique);
     KAIXO_FUNCTION_OVERLOAD(realloc);
     KAIXO_FUNCTION_OVERLOAD(destroy);
     KAIXO_FUNCTION_OVERLOAD(destroy_at);

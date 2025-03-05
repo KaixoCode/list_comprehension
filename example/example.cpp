@@ -116,5 +116,18 @@ int main() {
     //         Larry is 55 years old and is friends with Harry and Sam
     //         Sam is 15 years old and is friends with Harry
 
+    // Call member functions on objects
+    struct Counter {
+        int count = 0;
+
+        int increment() { return ++count; }
+        int incrementWith(int amount) { return count += amount; }
+    };
+
+    std::vector<Counter> counters{ { 1 }, { 5 } };
+
+    auto r10 = (a(&Counter::incrementWith, b) | a <- counters, b <- range(1, 4));
+    for (auto v : r10) std::print("{}, ", v); std::println("");
+
     return 0;
 }

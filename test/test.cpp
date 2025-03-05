@@ -6,6 +6,8 @@
 #include <string>
 #include <source_location>
 #include <stacktrace>
+#include <any>
+#include <memory>
 
 #include "kaixo/list_comprehension.hpp"
 
@@ -44,9 +46,22 @@ struct Person {
     std::vector<int> friends;
 };
 
+template<class ...Tys>
+auto oiaen() {
+    abs<Tys...>();
+}
+
 int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
+    
+
+    named_tuple<decltype(a), std::tuple<std::any>> vssss{ { 1 } };
+    named_tuple<decltype(a), std::tuple<int>> fefaefa{ { 1 } };
+
+    auto resfea = std::any_cast<int>(a).evaluate(vssss);
+
+    //auto rsrg = std::make_unique<int>(a + 1).evaluate(fefaefa);
 
     std::vector<int> av{};
     std::vector<int> bv{};
