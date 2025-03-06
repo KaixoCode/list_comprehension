@@ -976,6 +976,26 @@ namespace kaixo {
         }
 
         // ------------------------------------------------
+        
+        template<class Ty, class Self>
+            requires requires(Self&& self) { { std::ranges::to<Ty>(self) } -> std::same_as<Ty>; }
+        constexpr operator Ty(this Self&& self) {
+            return std::ranges::to<Ty>(std::forward<Self>(self));
+        }
+        
+        template<template<class...> class Ty, class Self>
+            requires requires(Self&& self) { { std::ranges::to<Ty>(self) }; }
+        constexpr auto as(this Self&& self) {
+            return std::ranges::to<Ty>(std::forward<Self>(self));
+        }
+        
+        template<class Ty, class Self>
+            requires requires(Self&& self) { { std::ranges::to<Ty>(self) } -> std::same_as<Ty>; }
+        constexpr auto as(this Self&& self) {
+            return std::ranges::to<Ty>(std::forward<Self>(self));
+        }
+
+        // ------------------------------------------------
 
         template<class Self>
             requires std::ranges::random_access_range<Range>

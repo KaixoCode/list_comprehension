@@ -49,20 +49,6 @@ struct Person {
 int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
-    
-    auto aoine = (a | (a, _) <- (range(0, 0), range(0,0)));
-
-    constexpr auto aefaefaefa = []() {
-        std::vector<bool> aefae{ true, true };
-        
-        auto aeiounf = (a & _ & 1);
-        
-        named_tuple<decltype(a), std::vector<bool>> aea{ aefae };
-        return aeiounf.evaluate(aea);
-
-    }();
-
-
 
 
     named_tuple<decltype(a), std::tuple<std::any>> vssss{ { 1 } };
