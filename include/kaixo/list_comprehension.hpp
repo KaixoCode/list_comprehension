@@ -63,8 +63,11 @@ namespace kaixo {
     template<class Tuple>
     constexpr std::size_t recursive_tuple_size_v = std::tuple_size_v<decltype(detail::flatten_tuple(std::declval<Tuple>()))>;
 
+    template<class Tuple>
+    using flatten_tuple_t = decltype(detail::flatten_tuple(std::declval<Tuple>()));
+    
     template<std::size_t I, class Tuple>
-    using recursive_tuple_element_t = std::tuple_element_t<I, decltype(detail::flatten_tuple(std::declval<Tuple>()))>;
+    using recursive_tuple_element_t = std::tuple_element_t<I, flatten_tuple_t<Tuple>>;
 
     template<std::size_t I, class Tuple>
     constexpr recursive_tuple_element_t<I, Tuple&&> recursive_get(Tuple&& tuple) {
@@ -136,7 +139,17 @@ namespace kaixo {
         constexpr auto operator()(Type(Class::* ptr)(Args...), Tys&&... tys) const;
 
         // ------------------------------------------------
+      
+        template<class ...Args>
+            requires (sizeof...(Vars) == recursive_tuple_size_v<std::tuple<Args...>>)
+        constexpr auto operator=(std::tuple<Args...>&& args) const;
+        
+        template<class Arg>
+            requires (!kaixo::is_var<Arg> && sizeof...(Vars) == recursive_tuple_size_v<std::tuple<Arg>>)
+        constexpr auto operator=(Arg&& arg) const;
 
+        // ------------------------------------------------
+        
     };
 
     // ------------------------------------------------
@@ -201,6 +214,9 @@ namespace kaixo {
     template<class Ty> using depends_t = typename depends<Ty>::type;
     template<class Ty> using defines_t = typename defines<Ty>::type;
 
+    template<class ...Args> struct depends<std::tuple<Args...>> : std::type_identity<unique_t<concat_t<depends_t<std::decay_t<Args>>...>>> {};
+    template<class ...Args> struct defines<std::tuple<Args...>> : std::type_identity<unique_t<concat_t<depends_t<std::decay_t<Args>>...>>> {};
+
     template<class Ty> requires requires { typename std::decay_t<Ty>::depends; }
     struct depends<Ty> : std::type_identity<typename std::decay_t<Ty>::depends> {};
 
@@ -229,7 +245,7 @@ namespace kaixo {
     constexpr auto evaluate(Ty&& o, Tuple&&) { return std::forward<Ty>(o); }
     
     template<unevaluated Ty, class Tuple> 
-        requires requires (Ty&& o, Tuple&& v) { { o.evaluate(v) }; }
+        requires requires (Ty&& o, Tuple&& v) { { std::forward<Ty>(o).evaluate(v) }; }
     constexpr auto evaluate(Ty&& o, Tuple&& v)
         -> decltype(std::forward<Ty>(o).evaluate(v))
     {
@@ -267,7 +283,7 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        using depends = var<>;
+        using depends = depends_t<std::decay_t<Tuple>>;
         using defines = Vars;
 
         // ------------------------------------------------
@@ -277,13 +293,58 @@ namespace kaixo {
         // ------------------------------------------------
 
         template<class Find, class Self>
-        constexpr recursive_tuple_element_t<Vars::template index<Find>, Tuple&&> get(this Self&& self) {
+        constexpr auto get(this Self&& self) 
+            -> recursive_tuple_element_t<Vars::template index<Find>, decltype(std::declval<Self&&>().tuple)>
+        {
             return recursive_get<Vars::template index<Find>>(std::forward<Self>(self).tuple);
+        }
+
+        // ------------------------------------------------
+        
+        template<class Self, class Tuple>
+        constexpr auto evaluate(this Self&& self, Tuple&& tuple) {
+            return std::apply([&]<class ...Tys>(Tys&& ...tys) {
+                using tuple_t = decltype(std::make_tuple(kaixo::evaluate(std::declval<Tys&&>(), std::declval<Tuple&>())...));
+                return named_tuple<Vars, tuple_t>{ .tuple = { kaixo::evaluate(std::forward<Tys>(tys), tuple)... } };
+            }, std::forward<Self>(self).tuple);
         }
 
         // ------------------------------------------------
 
     };
+
+    // ------------------------------------------------
+    
+    template< class ...V1s
+            , class ...As
+            , class ...V2s
+            , class ...Bs>
+    constexpr auto operator,( named_tuple<var<V1s...>, std::tuple<As...>>&& a
+                            , named_tuple<var<V2s...>, std::tuple<Bs...>>&& b)
+        -> named_tuple<var<V1s..., V2s...>, std::tuple<As..., Bs...>>
+    {
+        return { .tuple = std::tuple_cat(std::move(a).tuple, std::move(b).tuple) };
+    }
+
+    // ------------------------------------------------
+
+    template<class ...Vars>
+    template<class ...Args>
+        requires (sizeof...(Vars) == recursive_tuple_size_v<std::tuple<Args...>>)
+    constexpr auto var<Vars...>::operator=(std::tuple<Args...>&& args) const {
+        return named_tuple<var<Vars...>, std::tuple<std::decay_t<Args>...>>{
+            .tuple = std::move(args),
+        };
+    }
+    
+    template<class ...Vars>
+    template<class Arg>
+        requires (!is_var<Arg> && sizeof...(Vars) == recursive_tuple_size_v<std::tuple<Arg>>)
+    constexpr auto var<Vars...>::operator=(Arg&& arg) const {
+        return named_tuple<var<Vars...>, std::tuple<std::decay_t<Arg>>> {
+            .tuple = { std::forward<Arg>(arg) },
+        };
+    }
 
     // ------------------------------------------------
     //                  Expressions
@@ -295,7 +356,7 @@ namespace kaixo {
     // ------------------------------------------------
 
     template<class Ty>
-    concept explicit_unevaluated_range = unevaluated<Ty> && requires() { typename std::decay_t<Ty>::is_range; };
+    concept explicit_unevaluated_range = unevaluated<Ty> && requires { typename std::decay_t<Ty>::is_range; };
     
     template<class Ty>
     concept unevaluated_range = is_var<Ty> || explicit_unevaluated_range<Ty>;
@@ -978,19 +1039,19 @@ namespace kaixo {
         // ------------------------------------------------
         
         template<class Ty, class Self>
-            requires requires(Self&& self) { { std::ranges::to<Ty>(self) } -> std::same_as<Ty>; }
+            requires requires(Self&& self) { { std::ranges::to<Ty>(std::forward<Self>(self)) } -> std::same_as<Ty>; }
         constexpr operator Ty(this Self&& self) {
             return std::ranges::to<Ty>(std::forward<Self>(self));
         }
         
         template<template<class...> class Ty, class Self>
-            requires requires(Self&& self) { { std::ranges::to<Ty>(self) }; }
+            requires requires(Self&& self) { { std::ranges::to<Ty>(std::forward<Self>(self)) }; }
         constexpr auto as(this Self&& self) {
             return std::ranges::to<Ty>(std::forward<Self>(self));
         }
         
         template<class Ty, class Self>
-            requires requires(Self&& self) { { std::ranges::to<Ty>(self) } -> std::same_as<Ty>; }
+            requires requires(Self&& self) { { std::ranges::to<Ty>(std::forward<Self>(self)) } -> std::same_as<Ty>; }
         constexpr auto as(this Self&& self) {
             return std::ranges::to<Ty>(std::forward<Self>(self));
         }
@@ -1228,7 +1289,7 @@ namespace kaixo {
             .expression = std::move(r1).expression,
         } };
     }
-    
+
     // ------------------------------------------------
     //                Unevaluated Cache
     // ------------------------------------------------
@@ -1301,7 +1362,85 @@ namespace kaixo {
             .expression = std::move(r1.expression),
         } };
     }
+
+    // ------------------------------------------------
+    //             Variable Assignment
+    // ------------------------------------------------
+    //  Assign single values to a variable for use
+    //  in later expressions.
+    // ------------------------------------------------
+               
+    template<class Vars, class ...Args>
+    struct variable_assignment_operation {
+        std::tuple<Args...> args;
+
+        template<class Self, class Tuple>
+        constexpr auto operator()(this Self&& self, Tuple&& tuple) {
+            // First evaluate all the arguments in the variable assignment
+            named_tuple<Vars, Tuple&> named{ tuple };
+            auto evaluated = std::apply([&]<class ...Tys>(Tys&& ...tys) {
+                using tuple_t = std::tuple<decltype(kaixo::evaluate(std::declval<Tys&&>(), std::declval<named_tuple<Vars, Tuple&>&>()))...>;
+                return tuple_t{ kaixo::evaluate(std::forward<Tys>(tys), named)... };
+            }, std::forward<Self>(self).args);
+            // Then combine the fully evaluated arguments with the original tuple
+            return std::make_tuple(std::forward<Tuple>(tuple), std::move(evaluated));
+        }
+    };
+
+    // ------------------------------------------------
     
+    // Handles default case for a variable assignment
+    template< class                      ...V1s
+            , evaluated_range               Range
+            , class                         Expression
+            , class                      ...V2s
+            , class                      ...Args>
+
+        requires has_all_defines_for<var<V1s...>, std::tuple<Args...>>
+
+    constexpr auto operator,( named_range<var<V1s...>, Range, Expression>&&   r
+                            , named_tuple<var<V2s...>, std::tuple<Args...>>&& c)
+        -> named_range< var<V1s..., V2s...>
+                      , std::ranges::transform_view< std::views::all_t<Range>
+                                                   , variable_assignment_operation<var<V1s...>, Args...>>
+                      , Expression> 
+    {
+        using range_t = std::ranges::transform_view< std::views::all_t<Range>
+                                                   , variable_assignment_operation<var<V1s...>, Args...>>;
+        return { {
+            .range = range_t{ std::views::all(std::move(r).range), { std::move(c).tuple } },
+            .expression = std::move(r).expression,
+        } };
+    }
+    
+    // Handles 2 cases for later evaluation:
+    //  - Continues building upon an unevaluated range, need to cache all parts
+    //  - Encounters Condition which can not be evaluated using Vars
+    template< class                   ...V1s
+            , class                      Range
+            , class                      Expression
+            , class                   ...V2s
+            , class                   ...Args>
+
+        requires (unevaluated<Range>     // Case 1: continue building upon unevaluated
+             ||   evaluated_range<Range> // Case 2: Can't fully evaluate Condition
+               && !has_all_defines_for<var<V1s...>, std::tuple<Args...>>)
+
+    constexpr auto operator,( named_range<var<V1s...>, Range, Expression>&&   r
+                            , named_tuple<var<V2s...>, std::tuple<Args...>>&& c)
+        -> named_range< var<V1s..., V2s...>
+                      , unevaluated_cache< named_range<var<V1s...>, Range>
+                                         , named_tuple<var<V2s...>, std::tuple<Args...>>>
+                      , Expression>
+    {
+        using range_t = unevaluated_cache< named_range<var<V1s...>, Range>
+                                         , named_tuple<var<V2s...>, std::tuple<Args...>>>;
+        return { {
+            .range = range_t{ { std::move(r).range }, std::move(c) },
+            .expression = std::move(r).expression,
+        } };
+    }
+
     // ------------------------------------------------
     //                 Range Filter
     // ------------------------------------------------
@@ -1324,11 +1463,14 @@ namespace kaixo {
 
     // ------------------------------------------------
     
+    template<class Ty>
+    concept valid_range_condition = valid_expression_arguments<Ty> && defines_t<Ty>::size == 0;
+
     // Handles default case for a range filter
     template< class                      Vars
             , evaluated_range            Range
             , class                      Expression
-            , valid_expression_arguments Condition>
+            , valid_range_condition      Condition>
 
         requires has_all_defines_for<Vars, Condition>
 
@@ -1353,7 +1495,7 @@ namespace kaixo {
     template< class                      Vars
             , class                      Range
             , class                      Expression
-            , valid_expression_arguments Condition>
+            , valid_range_condition      Condition>
 
         requires (unevaluated<Range>     // Case 1: continue building upon unevaluated
              ||   evaluated_range<Range> // Case 2: Can't fully evaluate Condition

@@ -49,17 +49,8 @@ struct Person {
 int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
-
-
-    named_tuple<decltype(a), std::tuple<std::any>> vssss{ { 1 } };
-    named_tuple<decltype(a), std::tuple<int>> fefaefa{ { 1 } };
-
-    auto resfea = std::any_cast<int>(a).evaluate(vssss);
-
-    //auto rsrg = std::make_unique<int>(a + 1).evaluate(fefaefa);
-
-    std::vector<int> av{};
-    std::vector<int> bv{};
+    
+    constexpr auto rhghvcj = (b | a <- range(0, 10), b = a + c)[9].evaluate(c = 1);
 
     //auto oiane = (a, b) <- std::views::cartesian_product(av | std::views::filter([](auto& a) -> decltype(auto) { return a; }), bv);
 
