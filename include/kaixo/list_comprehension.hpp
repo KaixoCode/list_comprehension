@@ -143,6 +143,10 @@ namespace kaixo {
 
     template<class ...As, class ...Bs>
     constexpr var<As..., Bs...> operator,(var<As...>, var<Bs...>) { return {}; }
+    template<class ...As>
+    constexpr var<As..., detail::dud> operator,(var<As...>, detail::dud) { return {}; }
+    template<class ...As>
+    constexpr var<detail::dud, As...> operator,(detail::dud, var<As...>) { return {}; }
 
     // ------------------------------------------------
 
@@ -307,16 +311,19 @@ namespace kaixo {
     
     template<class ...As>
     concept valid_overload_arguments =
-           (unevaluated<As> || ...); // Overloads require at least 1 argument to be unevaluated
+           (unevaluated<As> || ...) // Overloads require at least 1 argument to be unevaluated
+        && (not_dud<As> && ...);    // Dud is not allowed in expressions
 
     template<class ...As>
     concept valid_expression_arguments =
-           (unevaluated<As> || ...) // Expressions require at least 1 argument to be unevaluated
+           (unevaluated<As> || ...)      // Expressions require at least 1 argument to be unevaluated
+        && (not_dud<As> && ...)          // Dud is not allowed in expressions
         && (!explicit_range<As> && ...); // Cannot be a range, as this messes with the operator overloads.
     
     template<class ...As>
     concept valid_tuple_arguments =
-           (unevaluated<As> || ...); // Tuple operation requires at least 1 argument to be unevaluated
+           (unevaluated<As> || ...)  // Tuple operation requires at least 1 argument to be unevaluated
+        && (not_dud<As> && ...);     // Dud is not allowed in expressions
     
     // ------------------------------------------------
     
@@ -425,13 +432,37 @@ namespace kaixo {
         return { std::forward<A>(a), std::forward<B>(b) };                                                    \
     }
 
-    KAIXO_BINARY_OP(+, add);      KAIXO_BINARY_OP(< , less_than);          KAIXO_BINARY_OP(| , bit_or);      KAIXO_BINARY_OP(*=, multiply_assign);
-    KAIXO_BINARY_OP(-, subtract); KAIXO_BINARY_OP(> , greater_than);       KAIXO_BINARY_OP(^, bit_xor);      KAIXO_BINARY_OP(/=, divide_assign);
-    KAIXO_BINARY_OP(*, multiply); KAIXO_BINARY_OP(<= , less_or_equals);    KAIXO_BINARY_OP(&&, logic_and);   KAIXO_BINARY_OP(%=, modulo_assign);
-    KAIXO_BINARY_OP(/ , divide);  KAIXO_BINARY_OP(>= , greater_or_equals); KAIXO_BINARY_OP(|| , logic_or);   KAIXO_BINARY_OP(&=, bit_and_assign);
-    KAIXO_BINARY_OP(%, modulo);   KAIXO_BINARY_OP(+=, add_assign);         KAIXO_BINARY_OP(== , equals);     KAIXO_BINARY_OP(|=, bit_or_assign);
-    KAIXO_BINARY_OP(&, bit_and);  KAIXO_BINARY_OP(-=, subtract_assign);    KAIXO_BINARY_OP(!= , not_equals); KAIXO_BINARY_OP(^=, bit_xor_assign);
+    KAIXO_BINARY_OP(+, add);      KAIXO_BINARY_OP(< , less_than);          KAIXO_BINARY_OP(| , bit_or);      
+    KAIXO_BINARY_OP(-, subtract); KAIXO_BINARY_OP(> , greater_than);       KAIXO_BINARY_OP(^, bit_xor);      
+    KAIXO_BINARY_OP(*, multiply); KAIXO_BINARY_OP(<= , less_or_equals);    KAIXO_BINARY_OP(&&, logic_and);   
+    KAIXO_BINARY_OP(/ , divide);  KAIXO_BINARY_OP(>= , greater_or_equals); KAIXO_BINARY_OP(|| , logic_or);   
+    KAIXO_BINARY_OP(%, modulo);   KAIXO_BINARY_OP(== , equals);     
+    KAIXO_BINARY_OP(&, bit_and);  KAIXO_BINARY_OP(!= , not_equals); 
     
+#define KAIXO_BINARY_ASSIGN_OP(op, name)                                                                      \
+    struct name##_operator {                                                                                  \
+        template<class A, class B>                                                                            \
+        constexpr auto operator()(A&& a, B&& b) const                                                         \
+            -> decltype(std::declval<A&&>() op std::declval<B&&>())                                           \
+        {                                                                                                     \
+            return std::forward<A>(a) op std::forward<B>(b);                                                  \
+        }                                                                                                     \
+    };                                                                                                        \
+                                                                                                              \
+    template<class A, class B> requires valid_expression_arguments<A, B>                                      \
+    constexpr binary_operation<std::decay_t<A>, std::decay_t<B>, name##_operator> operator op(A&& a, B&& b) { \
+        return { std::forward<A>(a), std::forward<B>(b) };                                                    \
+    }
+
+    KAIXO_BINARY_ASSIGN_OP(*=, multiply_assign);
+    KAIXO_BINARY_ASSIGN_OP(/=, divide_assign);
+    KAIXO_BINARY_ASSIGN_OP(%=, modulo_assign);
+    KAIXO_BINARY_ASSIGN_OP(&=, bit_and_assign);
+    KAIXO_BINARY_ASSIGN_OP(+=, add_assign);         
+    KAIXO_BINARY_ASSIGN_OP(-=, subtract_assign);    
+    KAIXO_BINARY_ASSIGN_OP(|=, bit_or_assign);
+    KAIXO_BINARY_ASSIGN_OP(^=, bit_xor_assign);
+
     // ------------------------------------------------
 
     // Unary operation overloads all unary operators for expressions.
@@ -1878,6 +1909,136 @@ namespace kaixo {
     }
 
     // ------------------------------------------------
+    //                Fold Operation
+    // ------------------------------------------------
+    //  Operation on ranges that folds them into
+    //  single values, like std::ranges::fold_left etc.
+    // ------------------------------------------------
+
+    constexpr detail::dud _{};
+
+    // ------------------------------------------------
+
+    template<class A, class B, class Op>
+    struct fold_operation {
+
+        // ------------------------------------------------
+
+        using defines = var<>;
+        using depends = unique_t<concat_t<depends_t<A>, depends_t<B>>>;
+
+        // ------------------------------------------------
+
+        A a;
+        B b;
+        Op operation{};
+
+        // ------------------------------------------------
+
+        template<class Self, class Tuple>
+        constexpr auto evaluate(this Self&& self, Tuple&& tuple) {
+            using evaluated1_t = decltype(kaixo::evaluate(std::declval<Self&&>().a, std::declval<Tuple&>()));
+            using evaluated2_t = decltype(kaixo::evaluate(std::declval<Self&&>().b, std::declval<Tuple&>()));
+
+            if constexpr (unevaluated<evaluated1_t> || unevaluated<evaluated2_t>) {
+                return fold_operation<evaluated1_t, evaluated2_t, Op>{
+                    kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                    kaixo::evaluate(std::forward<Self>(self).b, tuple),
+                    std::forward<Self>(self).operation,
+                };
+            } else {
+                // There are 2 special cases: logic_and and logic_or operator
+                // when no initial value is defined, it will default to 'true'
+                // for the logic_and operator, and 'false' for logic_or.
+                if constexpr (std::ranges::range<evaluated1_t>) {
+                    if constexpr (std::same_as<B, detail::dud>)
+                        if constexpr (std::same_as<Op, logic_and_operator>)
+                            return std::ranges::fold_right(
+                                kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                                true, // Default to 'true' for logic_and
+                                std::forward<Self>(self).operation);
+                        else if constexpr (std::same_as<Op, logic_or_operator>)
+                            return std::ranges::fold_right(
+                                kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                                false, // Default to 'false' for logic_or
+                                std::forward<Self>(self).operation);
+                        else return std::ranges::fold_right_last(
+                            kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                            std::forward<Self>(self).operation);
+                    else return std::ranges::fold_right(
+                        kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                        kaixo::evaluate(std::forward<Self>(self).b, tuple),
+                        std::forward<Self>(self).operation);
+                } else if constexpr (std::ranges::range<evaluated2_t>) {
+                    if constexpr (std::same_as<A, detail::dud>)
+                        if constexpr (std::same_as<Op, logic_and_operator>)
+                            return std::ranges::fold_left(
+                                kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                                true, // Default to 'true' for logic_and
+                                std::forward<Self>(self).operation);
+                        else if constexpr (std::same_as<Op, logic_or_operator>)
+                            return std::ranges::fold_left(
+                                kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                                false, // Default to 'false' for logic_or
+                                std::forward<Self>(self).operation);
+                        else return std::ranges::fold_left_first(
+                            kaixo::evaluate(std::forward<Self>(self).b, tuple),
+                            std::forward<Self>(self).operation);
+                    else return std::ranges::fold_left(
+                        kaixo::evaluate(std::forward<Self>(self).b, tuple),
+                        kaixo::evaluate(std::forward<Self>(self).a, tuple),
+                        std::forward<Self>(self).operation);
+                } else {
+                    static_assert(std::conditional_t<false, A, std::false_type>::value, "Fold expression expected a range!");
+                }
+            }
+        }
+
+        // ------------------------------------------------
+
+    };
+
+    // ------------------------------------------------
+
+#define KAIXO_FOLD_OP(op, name)                                                                 \
+    template<class A>                                                                           \
+    constexpr auto operator op(A&& a, detail::dud)                                              \
+        -> fold_operation<std::decay_t<A>, detail::dud, name##_operator>                        \
+    {                                                                                           \
+        return { std::forward<A>(a), {} };                                                      \
+    }                                                                                           \
+                                                                                                \
+    template<class A>                                                                           \
+    constexpr auto operator op(detail::dud, A&& a)                                              \
+        -> fold_operation<detail::dud, std::decay_t<A>, name##_operator>                        \
+    {                                                                                           \
+        return { {}, std::forward<A>(a) };                                                      \
+    }                                                                                           \
+                                                                                                \
+    template<class A, class B>                                                                  \
+        requires (unevaluated<A> || unevaluated<B>)                                             \
+    constexpr auto operator op(fold_operation<A, detail::dud, name##_operator>&& a, B&& b)      \
+        -> fold_operation<std::decay_t<A>, std::decay_t<B>, name##_operator>                    \
+    {                                                                                           \
+        return { std::move(a).a, std::forward<B>(b) };                                          \
+    }                                                                                           \
+                                                                                                \
+    template<class A, class B>                                                                  \
+        requires (unevaluated<A> || unevaluated<B>)                                             \
+    constexpr auto operator op(A&& a, fold_operation<detail::dud, B, name##_operator>&& b)      \
+        -> fold_operation<std::decay_t<A>, std::decay_t<B>, name##_operator>                    \
+    {                                                                                           \
+        return { std::forward<A>(a), std::move(b).b };                                          \
+    }
+
+    KAIXO_FOLD_OP(+, add);      KAIXO_FOLD_OP(< , less_than);          KAIXO_FOLD_OP(| , bit_or);      KAIXO_FOLD_OP(*=, multiply_assign);
+    KAIXO_FOLD_OP(-, subtract); KAIXO_FOLD_OP(> , greater_than);       KAIXO_FOLD_OP(^, bit_xor);      KAIXO_FOLD_OP(/=, divide_assign);
+    KAIXO_FOLD_OP(*, multiply); KAIXO_FOLD_OP(<= , less_or_equals);    KAIXO_FOLD_OP(&&, logic_and);   KAIXO_FOLD_OP(%=, modulo_assign);
+    KAIXO_FOLD_OP(/ , divide);  KAIXO_FOLD_OP(>= , greater_or_equals); KAIXO_FOLD_OP(|| , logic_or);   KAIXO_FOLD_OP(&=, bit_and_assign);
+    KAIXO_FOLD_OP(%, modulo);   KAIXO_FOLD_OP(+=, add_assign);         KAIXO_FOLD_OP(== , equals);     KAIXO_FOLD_OP(|=, bit_or_assign);
+    KAIXO_FOLD_OP(&, bit_and);  KAIXO_FOLD_OP(-=, subtract_assign);    KAIXO_FOLD_OP(!= , not_equals); KAIXO_FOLD_OP(^=, bit_xor_assign);
+    
+    // ------------------------------------------------
     //          Basic variable definitions
     // ------------------------------------------------
 
@@ -1908,7 +2069,6 @@ namespace kaixo {
         constexpr auto x = var<struct variable_x>{};
         constexpr auto y = var<struct variable_y>{};
         constexpr auto z = var<struct variable_z>{};
-        constexpr auto _ = var<detail::dud>{};
 
         constexpr auto key   = var<struct Key>{};
         constexpr auto value = var<struct Value>{};
@@ -1925,8 +2085,7 @@ namespace std {
     // ------------------------------------------------
     //            std function overloads
     // ------------------------------------------------
-    //  Empty expression checks whether an unevaluated
-    //  range is empty when evaluated on the fly.
+    //  Overloads for a bunch of standard functions.
     // ------------------------------------------------
 
 #define KAIXO_FUNCTION_OVERLOAD(name)                                                                               \
