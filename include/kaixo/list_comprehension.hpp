@@ -422,26 +422,6 @@ namespace kaixo {
 #define KAIXO_BINARY_OP(op, name)                                                                             \
     struct name##_operator {                                                                                  \
         template<class A, class B>                                                                            \
-        constexpr decltype(auto) operator()(A&& a, B&& b) const {                                             \
-            return std::forward<A>(a) op std::forward<B>(b);                                                  \
-        }                                                                                                     \
-    };                                                                                                        \
-                                                                                                              \
-    template<class A, class B> requires valid_expression_arguments<A, B>                                      \
-    constexpr binary_operation<std::decay_t<A>, std::decay_t<B>, name##_operator> operator op(A&& a, B&& b) { \
-        return { std::forward<A>(a), std::forward<B>(b) };                                                    \
-    }
-
-    KAIXO_BINARY_OP(+, add);      KAIXO_BINARY_OP(< , less_than);          KAIXO_BINARY_OP(| , bit_or);      
-    KAIXO_BINARY_OP(-, subtract); KAIXO_BINARY_OP(> , greater_than);       KAIXO_BINARY_OP(^, bit_xor);      
-    KAIXO_BINARY_OP(*, multiply); KAIXO_BINARY_OP(<= , less_or_equals);    KAIXO_BINARY_OP(&&, logic_and);   
-    KAIXO_BINARY_OP(/ , divide);  KAIXO_BINARY_OP(>= , greater_or_equals); KAIXO_BINARY_OP(|| , logic_or);   
-    KAIXO_BINARY_OP(%, modulo);   KAIXO_BINARY_OP(== , equals);     
-    KAIXO_BINARY_OP(&, bit_and);  KAIXO_BINARY_OP(!= , not_equals); 
-    
-#define KAIXO_BINARY_ASSIGN_OP(op, name)                                                                      \
-    struct name##_operator {                                                                                  \
-        template<class A, class B>                                                                            \
         constexpr auto operator()(A&& a, B&& b) const                                                         \
             -> decltype(std::declval<A&&>() op std::declval<B&&>())                                           \
         {                                                                                                     \
@@ -454,14 +434,33 @@ namespace kaixo {
         return { std::forward<A>(a), std::forward<B>(b) };                                                    \
     }
 
-    KAIXO_BINARY_ASSIGN_OP(*=, multiply_assign);
-    KAIXO_BINARY_ASSIGN_OP(/=, divide_assign);
-    KAIXO_BINARY_ASSIGN_OP(%=, modulo_assign);
-    KAIXO_BINARY_ASSIGN_OP(&=, bit_and_assign);
-    KAIXO_BINARY_ASSIGN_OP(+=, add_assign);         
-    KAIXO_BINARY_ASSIGN_OP(-=, subtract_assign);    
-    KAIXO_BINARY_ASSIGN_OP(|=, bit_or_assign);
-    KAIXO_BINARY_ASSIGN_OP(^=, bit_xor_assign);
+    KAIXO_BINARY_OP(+, add);         
+    KAIXO_BINARY_OP(-, subtract);    
+    KAIXO_BINARY_OP(*, multiply);    
+    KAIXO_BINARY_OP(/ , divide);     
+    KAIXO_BINARY_OP(%, modulo);  
+
+    KAIXO_BINARY_OP(&, bit_and); 
+    KAIXO_BINARY_OP(| , bit_or);
+    KAIXO_BINARY_OP(^, bit_xor);
+    KAIXO_BINARY_OP(&&, logic_and);
+    KAIXO_BINARY_OP(|| , logic_or);
+
+    KAIXO_BINARY_OP(< , less_than);
+    KAIXO_BINARY_OP(> , greater_than);
+    KAIXO_BINARY_OP(<= , less_or_equals);
+    KAIXO_BINARY_OP(>= , greater_or_equals);
+    KAIXO_BINARY_OP(== , equals);
+    KAIXO_BINARY_OP(!= , not_equals);
+
+    KAIXO_BINARY_OP(*=, multiply_assign);
+    KAIXO_BINARY_OP(/=, divide_assign);
+    KAIXO_BINARY_OP(%=, modulo_assign);
+    KAIXO_BINARY_OP(&=, bit_and_assign);
+    KAIXO_BINARY_OP(+=, add_assign);         
+    KAIXO_BINARY_OP(-=, subtract_assign);    
+    KAIXO_BINARY_OP(|=, bit_or_assign);
+    KAIXO_BINARY_OP(^=, bit_xor_assign);
 
     // ------------------------------------------------
 

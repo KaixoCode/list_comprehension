@@ -52,7 +52,7 @@ int main() {
     
     auto aoine = (a | (a, _) <- (range(0, 0), range(0,0)));
 
-    constexpr auto aoine = []() {
+    constexpr auto aefaefaefa = []() {
         std::vector<bool> aefae{ true, true };
         
         auto aeiounf = (a & _ & 1);
