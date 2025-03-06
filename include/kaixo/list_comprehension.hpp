@@ -1252,10 +1252,11 @@ namespace kaixo {
             using tuple_t = decltype(detail::store_as_tuple(std::declval<Tuple&&>()));
             // This operator evaluates this unevaluated range on the fly
             // for each result of the parent range. This is done as follows:
-            return std::views::transform(
-                // First step is to evaluate the unevaluated range, we know Vars is
-                // enough to fully evaluate the range, so this results in an evaluated range.
-                std::views::all(kaixo::evaluate(std::forward<Self>(self).range, named_tuple<Vars, Tuple&&>{ std::forward<Tuple>(tuple) })), 
+            
+            // First step is to evaluate the unevaluated range, we know Vars is
+            // enough to fully evaluate the range, so this results in an evaluated range.
+            auto evaluated = std::views::all(kaixo::evaluate(std::forward<Self>(self).range, named_tuple<Vars, Tuple&&>{ std::forward<Tuple>(tuple) }));
+            return std::views::transform(std::move(evaluated),
                 // Then combine the results of the now evaluated range with the original
                 // results passed to this evaluator. This creates a cartesian product.
                 [tuple = detail::store_as_tuple(std::forward<Tuple>(tuple))]<class R>(R && r) {
