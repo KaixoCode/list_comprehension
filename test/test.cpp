@@ -50,7 +50,9 @@ int main() {
     using namespace kaixo;
     using namespace kaixo::variables;
     
-    constexpr auto rhghvcj = (b | a <- range(0, 10), b = a + c)[9].evaluate(c = 1);
+    constexpr auto rhghvcj = (b + c | a <- range(0, 10), b = a + 1)[9].evaluate(c = 1);
+
+    constexpr auto aofefine = sizeof(0 + b + c + 0 + e + f + 0 + h + 0);
 
     //auto oiane = (a, b) <- std::views::cartesian_product(av | std::views::filter([](auto& a) -> decltype(auto) { return a; }), bv);
 

@@ -591,8 +591,8 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        Expression expression;
-        Index index;
+        [[no_unique_address]] Expression expression;
+        [[no_unique_address]] Index index;
 
         // ------------------------------------------------
 
@@ -668,7 +668,7 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        Expression expression;
+        [[no_unique_address]] Expression expression;
         Type(Class::* ptr);
 
         // ------------------------------------------------
@@ -745,7 +745,7 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        Expression expression;
+        [[no_unique_address]] Expression expression;
         Fptr ptr;
         TupleOperation arguments;
 
@@ -2091,9 +2091,9 @@ namespace kaixo {
 
         // ------------------------------------------------
 
-        A a;
-        B b;
-        Op operation{};
+        [[no_unique_address]] A a;
+        [[no_unique_address]] B b;
+        [[no_unique_address]] Op operation{};
 
         // ------------------------------------------------
 
